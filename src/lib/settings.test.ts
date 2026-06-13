@@ -25,6 +25,7 @@ import {
   migrateWindsurfToDevin,
   loadThemeMode,
   normalizePluginSettings,
+  aliasToVirtualMeta,
   saveAutoUpdateInterval,
   saveDisplayMode,
   saveGlobalShortcut,
@@ -36,6 +37,7 @@ import {
   saveThemeMode,
   saveTimeFormatMode,
 } from "@/lib/settings"
+import type { ProviderAlias } from "@/lib/settings"
 import type { PluginMeta } from "@/lib/plugin-types"
 
 const storeState = new Map<string, unknown>()
@@ -431,5 +433,42 @@ describe("settings", () => {
   it("falls back to default for invalid start on login value", async () => {
     storeState.set("startOnLogin", "invalid")
     await expect(loadStartOnLogin()).resolves.toBe(DEFAULT_START_ON_LOGIN)
+  })
+})
+
+describe("aliases", () => {
+  const baseMeta: PluginMeta = {
+    id: "claude",
+    name: "Claude",
+    iconUrl: "data:base",
+    brandColor: "#DE7356",
+    lines: [],
+    links: [],
+    primaryCandidates: ["Session"],
+    weeklyCandidate: "Weekly",
+  }
+  const alias: ProviderAlias = {
+    id: "claude-work",
+    basePluginId: "claude",
+    name: "Claude Work",
+    icon: "Briefcase",
+    env: { CLAUDE_CONFIG_DIR: "~/.claude-work" },
+  }
+
+  it("keeps alias ids as known during normalize and enables new ones", () => {
+    const result = normalizePluginSettings(
+      { order: [], disabled: [] },
+      [baseMeta],
+      [alias]
+    )
+    expect(result.order).toContain("claude-work")
+    expect(result.disabled).not.toContain("claude-work")
+  })
+
+  it("derives a virtual meta from the base, overriding id and name", () => {
+    const meta = aliasToVirtualMeta(alias, baseMeta)
+    expect(meta.id).toBe("claude-work")
+    expect(meta.name).toBe("Claude Work")
+    expect(meta.primaryCandidates).toEqual(["Session"])
   })
 })

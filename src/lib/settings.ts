@@ -10,6 +10,19 @@ export type PluginSettings = {
   disabled: string[];
 };
 
+// An alias is a virtual provider instance: it reuses a base plugin's probe
+// logic but targets a different account via whitelisted env overrides, shown
+// under its own name and icon. Alias ids participate in PluginSettings.order
+// and .disabled like any other provider id.
+export type ProviderAlias = {
+  id: string;
+  basePluginId: string;
+  name: string;
+  icon: string; // lucide-react icon name, e.g. "Briefcase"
+  iconColor?: string;
+  env: Record<string, string>;
+};
+
 export type AutoUpdateIntervalMinutes = 5 | 15 | 30 | 60;
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -28,6 +41,7 @@ export type GlobalShortcut = string | null;
 
 const SETTINGS_STORE_PATH = "settings.json";
 const PLUGIN_SETTINGS_KEY = "plugins";
+const ALIASES_KEY = "aliases";
 const AUTO_UPDATE_SETTINGS_KEY = "autoUpdateInterval";
 const THEME_MODE_KEY = "themeMode";
 const DISPLAY_MODE_KEY = "displayMode";
@@ -120,6 +134,30 @@ export async function savePluginSettings(settings: PluginSettings): Promise<void
   await store.save();
 }
 
+export async function loadAliases(): Promise<ProviderAlias[]> {
+  const stored = await store.get<ProviderAlias[]>(ALIASES_KEY);
+  return Array.isArray(stored) ? stored : [];
+}
+
+export async function saveAliases(aliases: ProviderAlias[]): Promise<void> {
+  await store.set(ALIASES_KEY, aliases);
+  await store.save();
+}
+
+// Derive a virtual PluginMeta for an alias from its base provider's meta so the
+// alias card renders identical metrics. Icon is rendered from `alias.icon` by
+// the ProviderIcon component; the base iconUrl is kept as a fallback.
+export function aliasToVirtualMeta(
+  alias: ProviderAlias,
+  baseMeta: PluginMeta
+): PluginMeta {
+  return {
+    ...baseMeta,
+    id: alias.id,
+    name: alias.name,
+  };
+}
+
 // TODO(remove after 2026-09-01): One-time Windsurf -> Devin settings migration.
 export function migrateWindsurfToDevin(settings: PluginSettings): PluginSettings {
   const hasDevin = settings.order.includes("devin");
@@ -166,10 +204,15 @@ export async function saveAutoUpdateInterval(
 
 export function normalizePluginSettings(
   settings: PluginSettings,
-  plugins: PluginMeta[]
+  plugins: PluginMeta[],
+  aliases: ProviderAlias[] = []
 ): PluginSettings {
-  const knownIds = plugins.map((plugin) => plugin.id);
+  const knownIds = [
+    ...plugins.map((plugin) => plugin.id),
+    ...aliases.map((alias) => alias.id),
+  ];
   const knownSet = new Set(knownIds);
+  const aliasIds = new Set(aliases.map((alias) => alias.id));
 
   const order: string[] = [];
   const seen = new Set<string>();
@@ -189,6 +232,8 @@ export function normalizePluginSettings(
 
   const disabled = settings.disabled.filter((id) => knownSet.has(id));
   for (const id of newlyAdded) {
+    // Aliases are user-created, so they default to enabled.
+    if (aliasIds.has(id)) continue;
     if (!DEFAULT_ENABLED_PLUGINS.has(id) && !disabled.includes(id)) {
       disabled.push(id);
     }
