@@ -92,6 +92,16 @@ Keychain values use the same JSON structure as the legacy credentials file:
 
 **Fallback:** `~/.claude/.credentials.json`. This file can be left behind by older Claude Code versions, so it is treated as a fallback when Keychain does not contain usable credentials.
 
+### Aliases (multiple accounts)
+
+You can track more than one Claude account by adding **aliases** in Settings → Add
+Alias. Each alias has its own name and icon and points at a different config
+directory (for example `~/.claude-personal` and `~/.claude-work`). Behind the scenes
+an alias runs the Claude plugin with `CLAUDE_CONFIG_DIR` set to that directory, so it
+reads the matching credentials file and the matching hashed Keychain entry described
+above. Aliases show up as their own cards alongside the default Claude card, and can be
+reordered, enabled, disabled, edited, or deleted like any other provider.
+
 ### Token Refresh
 
 Access tokens are short-lived JWTs. Refreshed proactively 5 minutes before expiration, or reactively on 401/403.
