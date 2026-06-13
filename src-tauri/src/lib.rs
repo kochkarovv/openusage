@@ -197,6 +197,33 @@ pub struct ProbeBatchComplete {
     pub batch_id: String,
 }
 
+/// A virtual provider instance ("alias"): runs a base plugin's probe logic with
+/// per-instance environment overrides, under its own id and display name.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AliasSpec {
+    pub id: String,
+    pub base_plugin_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+}
+
+/// Build a virtual LoadedPlugin for an alias by cloning its base plugin and
+/// overriding identity. Returns None if the base plugin is not loaded.
+fn build_alias_plugin(
+    base_plugins: &[plugin_engine::manifest::LoadedPlugin],
+    spec: &AliasSpec,
+) -> Option<plugin_engine::manifest::LoadedPlugin> {
+    let base = base_plugins
+        .iter()
+        .find(|p| p.manifest.id == spec.base_plugin_id)?;
+    let mut cloned = base.clone();
+    cloned.manifest.id = spec.id.clone();
+    cloned.manifest.name = spec.name.clone();
+    Some(cloned)
+}
+
 #[tauri::command]
 fn init_panel(app_handle: tauri::AppHandle) {
     panel::init(&app_handle).expect("Failed to initialize panel");
@@ -227,6 +254,7 @@ async fn start_probe_batch(
     state: tauri::State<'_, Mutex<AppState>>,
     batch_id: Option<String>,
     plugin_ids: Option<Vec<String>>,
+    aliases: Option<Vec<AliasSpec>>,
 ) -> Result<ProbeBatchStarted, String> {
     let batch_id = batch_id
         .and_then(|id| {
@@ -248,28 +276,56 @@ async fn start_probe_batch(
         )
     };
 
-    let selected_plugins = match plugin_ids {
-        Some(ids) => {
-            let mut by_id: HashMap<String, plugin_engine::manifest::LoadedPlugin> = plugins
-                .into_iter()
-                .map(|plugin| (plugin.manifest.id.clone(), plugin))
-                .collect();
-            let mut seen = HashSet::new();
-            ids.into_iter()
-                .filter_map(|id| {
-                    if !seen.insert(id.clone()) {
-                        return None;
-                    }
-                    by_id.remove(&id)
-                })
-                .collect()
-        }
-        None => plugins,
-    };
-
-    let response_plugin_ids: Vec<String> = selected_plugins
+    let alias_specs: Vec<AliasSpec> = aliases.unwrap_or_default();
+    let alias_by_id: HashMap<String, AliasSpec> = alias_specs
         .iter()
-        .map(|plugin| plugin.manifest.id.clone())
+        .map(|a| (a.id.clone(), a.clone()))
+        .collect();
+
+    // Each work item carries its own env overrides (empty for base providers).
+    let work: Vec<(plugin_engine::manifest::LoadedPlugin, HashMap<String, String>)> =
+        match plugin_ids {
+            Some(ids) => {
+                let by_id: HashMap<String, plugin_engine::manifest::LoadedPlugin> = plugins
+                    .iter()
+                    .cloned()
+                    .map(|plugin| (plugin.manifest.id.clone(), plugin))
+                    .collect();
+                let mut seen = HashSet::new();
+                ids.into_iter()
+                    .filter_map(|id| {
+                        if !seen.insert(id.clone()) {
+                            return None;
+                        }
+                        if let Some(base) = by_id.get(&id) {
+                            return Some((base.clone(), HashMap::new()));
+                        }
+                        if let Some(spec) = alias_by_id.get(&id) {
+                            return build_alias_plugin(&plugins, spec)
+                                .map(|plugin| (plugin, spec.env.clone()));
+                        }
+                        None
+                    })
+                    .collect()
+            }
+            None => {
+                let mut items: Vec<_> = plugins
+                    .iter()
+                    .cloned()
+                    .map(|plugin| (plugin, HashMap::new()))
+                    .collect();
+                for spec in &alias_specs {
+                    if let Some(plugin) = build_alias_plugin(&plugins, spec) {
+                        items.push((plugin, spec.env.clone()));
+                    }
+                }
+                items
+            }
+        };
+
+    let response_plugin_ids: Vec<String> = work
+        .iter()
+        .map(|(plugin, _)| plugin.manifest.id.clone())
         .collect();
 
     log::info!(
@@ -278,7 +334,7 @@ async fn start_probe_batch(
         response_plugin_ids
     );
 
-    if selected_plugins.is_empty() {
+    if work.is_empty() {
         let _ = app_handle.emit(
             "probe:batch-complete",
             ProbeBatchComplete {
@@ -291,7 +347,7 @@ async fn start_probe_batch(
         });
     }
 
-    let selected_count = selected_plugins.len();
+    let selected_count = work.len();
     let worker_count = probe_worker_count(selected_count);
     if worker_count < selected_count {
         log::info!(
@@ -303,9 +359,7 @@ async fn start_probe_batch(
     }
 
     let remaining = Arc::new(AtomicUsize::new(selected_count));
-    let probe_queue = Arc::new(Mutex::new(
-        selected_plugins.into_iter().collect::<VecDeque<_>>(),
-    ));
+    let probe_queue = Arc::new(Mutex::new(work.into_iter().collect::<VecDeque<_>>()));
 
     for _ in 0..worker_count {
         let handle = app_handle.clone();
@@ -319,20 +373,20 @@ async fn start_probe_batch(
 
         tauri::async_runtime::spawn_blocking(move || {
             loop {
-                let plugin = {
+                let item = {
                     let mut queue = queue
                         .lock()
                         .unwrap_or_else(|poisoned| poisoned.into_inner());
                     queue.pop_front()
                 };
 
-                let Some(plugin) = plugin else {
+                let Some((plugin, env)) = item else {
                     break;
                 };
 
                 let plugin_id = plugin.manifest.id.clone();
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version)
+                    plugin_engine::runtime::run_probe(&plugin, &data_dir, &version, &env)
                 }));
 
                 match result {
@@ -641,10 +695,50 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        DAILY_ACTIVE_TRACKED_DAY_KEY, MAX_CONCURRENT_PROBES, probe_worker_count,
-        seconds_until_next_utc_day, should_track_daily_active,
+        AliasSpec, DAILY_ACTIVE_TRACKED_DAY_KEY, MAX_CONCURRENT_PROBES, build_alias_plugin,
+        probe_worker_count, seconds_until_next_utc_day, should_track_daily_active,
     };
+    use crate::plugin_engine::manifest::{LoadedPlugin, PluginManifest};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
     use time::{Date, Month, PrimitiveDateTime, Time};
+
+    fn test_loaded_plugin(id: &str, name: &str) -> LoadedPlugin {
+        LoadedPlugin {
+            manifest: PluginManifest {
+                schema_version: 1,
+                id: id.to_string(),
+                name: name.to_string(),
+                version: "0.0.0".to_string(),
+                entry: "plugin.js".to_string(),
+                icon: "icon.svg".to_string(),
+                brand_color: None,
+                lines: vec![],
+                links: vec![],
+            },
+            plugin_dir: PathBuf::from("."),
+            entry_script: "globalThis.__openusage_plugin = {};".to_string(),
+            icon_data_url: "data:image/svg+xml;base64,".to_string(),
+        }
+    }
+
+    #[test]
+    fn build_alias_plugin_overrides_identity() {
+        let base = test_loaded_plugin("claude", "Claude");
+        let spec = AliasSpec {
+            id: "claude-work".to_string(),
+            base_plugin_id: "claude".to_string(),
+            name: "Claude Work".to_string(),
+            env: HashMap::new(),
+        };
+        let alias = build_alias_plugin(&[base.clone()], &spec).expect("alias built");
+        assert_eq!(alias.manifest.id, "claude-work");
+        assert_eq!(alias.manifest.name, "Claude Work");
+        // Entry script is inherited from the base so probe logic is identical.
+        assert_eq!(alias.entry_script, base.entry_script);
+        // Missing base returns None.
+        assert!(build_alias_plugin(&[], &spec).is_none());
+    }
 
     #[test]
     fn should_track_when_no_previous_day() {

@@ -69,12 +69,18 @@ pub struct PluginOutput {
     pub icon_url: String,
 }
 
-pub fn run_probe(plugin: &LoadedPlugin, app_data_dir: &PathBuf, app_version: &str) -> PluginOutput {
+pub fn run_probe(
+    plugin: &LoadedPlugin,
+    app_data_dir: &PathBuf,
+    app_version: &str,
+    env_overrides: &std::collections::HashMap<String, String>,
+) -> PluginOutput {
     run_probe_with_timeout(
         plugin,
         app_data_dir,
         app_version,
         Duration::from_secs(PROBE_TIMEOUT_SECS),
+        env_overrides,
     )
 }
 
@@ -83,6 +89,7 @@ fn run_probe_with_timeout(
     app_data_dir: &PathBuf,
     app_version: &str,
     timeout: Duration,
+    env_overrides: &std::collections::HashMap<String, String>,
 ) -> PluginOutput {
     let fallback = error_output(plugin, "runtime error".to_string());
     let timeout_message = probe_timeout_message(timeout);
@@ -115,6 +122,7 @@ fn run_probe_with_timeout(
             &app_data,
             app_version,
             deadline,
+            env_overrides,
         )
         .is_err()
         {
@@ -759,6 +767,33 @@ mod tests {
     }
 
     #[test]
+    fn run_probe_passes_env_overrides_to_plugin() {
+        let plugin = test_plugin(
+            r#"
+            globalThis.__openusage_plugin = {
+                id: "envcheck",
+                probe: (ctx) => ({
+                    plan: null,
+                    lines: [{
+                        type: "text",
+                        label: "Dir",
+                        value: ctx.host.env.get("CLAUDE_CONFIG_DIR") || "none",
+                    }],
+                }),
+            };
+            "#,
+        );
+        let mut overrides = std::collections::HashMap::new();
+        overrides.insert("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-work".to_string());
+
+        let output = run_probe(&plugin, &temp_app_dir("env"), "0.0.0", &overrides);
+        match output.lines.first() {
+            Some(MetricLine::Text { value, .. }) => assert_eq!(value, "~/.claude-work"),
+            other => panic!("expected text line, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn run_probe_returns_thrown_string_from_sync_error() {
         let plugin = test_plugin(
             r#"
@@ -769,7 +804,7 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("sync"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("sync"), "0.0.0", &std::collections::HashMap::new());
         assert_eq!(error_text(output), "boom");
     }
 
@@ -784,7 +819,7 @@ mod tests {
             };
             "#,
         );
-        let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("async"), "0.0.0", &std::collections::HashMap::new());
         assert_eq!(error_text(output), "boom");
     }
 
@@ -805,6 +840,7 @@ mod tests {
             &temp_app_dir("timeout"),
             "0.0.0",
             Duration::from_millis(5),
+            &std::collections::HashMap::new(),
         );
 
         assert_eq!(error_text(output), "probe timed out after 5ms");
@@ -851,7 +887,7 @@ mod tests {
             "#,
         );
 
-        let output = run_probe(&plugin, &temp_app_dir("bar-chart"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("bar-chart"), "0.0.0", &std::collections::HashMap::new());
         let json: JsonValue = serde_json::to_value(&output.lines[0]).expect("serialize");
         assert_eq!(json["type"], "barChart");
         assert_eq!(json["label"], "Usage Trend");
@@ -877,7 +913,7 @@ mod tests {
             "#,
         );
 
-        let output = run_probe(&plugin, &temp_app_dir("bar-chart-cap"), "0.0.0");
+        let output = run_probe(&plugin, &temp_app_dir("bar-chart-cap"), "0.0.0", &std::collections::HashMap::new());
         let json: JsonValue = serde_json::to_value(&output.lines[0]).expect("serialize");
         assert_eq!(json["type"], "barChart");
         assert_eq!(

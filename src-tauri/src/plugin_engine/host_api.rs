@@ -595,6 +595,7 @@ pub(crate) fn inject_host_api<'js>(
         app_data_dir,
         app_version,
         ProbeDeadline::none(),
+        &HashMap::new(),
     )
 }
 
@@ -604,6 +605,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     app_data_dir: &PathBuf,
     app_version: &str,
     deadline: ProbeDeadline,
+    env_overrides: &HashMap<String, String>,
 ) -> rquickjs::Result<()> {
     let globals = ctx.globals();
     let probe_ctx = Object::new(ctx.clone())?;
@@ -632,7 +634,7 @@ pub(crate) fn inject_host_api_with_deadline<'js>(
     inject_log(ctx, &host, plugin_id)?;
     inject_fs(ctx, &host)?;
     inject_crypto(ctx, &host)?;
-    inject_env(ctx, &host, plugin_id)?;
+    inject_env(ctx, &host, plugin_id, env_overrides)?;
     inject_http(ctx, &host, plugin_id, deadline)?;
     inject_keychain(ctx, &host, plugin_id)?;
     inject_sqlite(ctx, &host)?;
@@ -792,13 +794,30 @@ fn inject_crypto<'js>(ctx: &Ctx<'js>, host: &Object<'js>) -> rquickjs::Result<()
     Ok(())
 }
 
-fn inject_env<'js>(ctx: &Ctx<'js>, host: &Object<'js>, _plugin_id: &str) -> rquickjs::Result<()> {
+fn inject_env<'js>(
+    ctx: &Ctx<'js>,
+    host: &Object<'js>,
+    _plugin_id: &str,
+    env_overrides: &HashMap<String, String>,
+) -> rquickjs::Result<()> {
+    // Per-instance overrides (used by aliases) are honored only for whitelisted
+    // vars. This keeps aliases from injecting arbitrary env into plugins.
+    let overrides: HashMap<String, String> = env_overrides
+        .iter()
+        .filter(|(name, _)| WHITELISTED_ENV_VARS.contains(&name.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
     let env_obj = Object::new(ctx.clone())?;
     env_obj.set(
         "get",
         Function::new(ctx.clone(), move |name: String| -> Option<String> {
             if !WHITELISTED_ENV_VARS.contains(&name.as_str()) {
                 return None;
+            }
+
+            if let Some(value) = overrides.get(&name) {
+                return Some(value.clone());
             }
 
             resolve_env_value(&name)
@@ -3213,6 +3232,40 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn env_override_applies_only_to_whitelisted_vars() {
+        let mut overrides = HashMap::new();
+        // CLAUDE_CONFIG_DIR is whitelisted -> override must win.
+        overrides.insert("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-test".to_string());
+        // HOME is not whitelisted -> override must be ignored (get returns None).
+        overrides.insert("HOME".to_string(), "/tmp/evil".to_string());
+
+        let rt = Runtime::new().expect("runtime");
+        let ctx = Context::full(&rt).expect("context");
+        ctx.with(|ctx| {
+            let app_data = std::env::temp_dir();
+            inject_host_api_with_deadline(
+                &ctx,
+                "claude-test",
+                &app_data,
+                "0.0.0",
+                ProbeDeadline::none(),
+                &overrides,
+            )
+            .expect("inject host api");
+
+            let value: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("CLAUDE_CONFIG_DIR")"#)
+                .expect("get override");
+            assert_eq!(value, Some("~/.claude-test".to_string()));
+
+            let blocked: Option<String> = ctx
+                .eval(r#"__openusage_ctx.host.env.get("HOME")"#)
+                .expect("get blocked");
+            assert_eq!(blocked, None, "non-whitelisted overrides must be ignored");
+        });
     }
 
     #[test]
