@@ -29,6 +29,7 @@ function GaugeIcon({ className }: { className?: string }) {
 import { cn } from "@/lib/utils"
 import { getRelativeLuminance } from "@/lib/color"
 import { useDarkMode } from "@/hooks/use-dark-mode"
+import { resolveAliasIcon } from "@/components/provider-icon"
 
 type ActiveView = "home" | "settings" | string
 
@@ -39,6 +40,8 @@ interface NavPlugin {
   name: string
   iconUrl: string
   brandColor?: string
+  aliasIcon?: string
+  aliasIconColor?: string
 }
 
 interface SideNavProps {
@@ -110,6 +113,10 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
     opacity: isDragging ? 0.5 : undefined,
   }
 
+  // Aliases reuse the base provider icon and overlay their chosen icon as a small
+  // corner badge, so e.g. a Claude work-account alias reads as "Claude + badge".
+  const AliasBadge = plugin.aliasIcon ? resolveAliasIcon(plugin.aliasIcon) : null
+
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} role="presentation">
       <NavButton
@@ -118,22 +125,39 @@ function SortableNavPlugin({ plugin, isActive, isDark, onClick, onContextMenu }:
         onContextMenu={onContextMenu}
         aria-label={plugin.name}
       >
-        <span
-          role="img"
-          aria-label={plugin.name}
-          className="size-6 inline-block"
-          style={{
-            backgroundColor: getIconColor(plugin.brandColor, isDark),
-            WebkitMaskImage: `url(${plugin.iconUrl})`,
-            WebkitMaskSize: "contain",
-            WebkitMaskRepeat: "no-repeat",
-            WebkitMaskPosition: "center",
-            maskImage: `url(${plugin.iconUrl})`,
-            maskSize: "contain",
-            maskRepeat: "no-repeat",
-            maskPosition: "center",
-          }}
-        />
+        <span className="relative inline-block size-6">
+          <span
+            role="img"
+            aria-label={plugin.name}
+            className="block size-6"
+            style={{
+              backgroundColor: getIconColor(plugin.brandColor, isDark),
+              WebkitMaskImage: `url(${plugin.iconUrl})`,
+              WebkitMaskSize: "contain",
+              WebkitMaskRepeat: "no-repeat",
+              WebkitMaskPosition: "center",
+              maskImage: `url(${plugin.iconUrl})`,
+              maskSize: "contain",
+              maskRepeat: "no-repeat",
+              maskPosition: "center",
+            }}
+          />
+          {AliasBadge && (
+            <span
+              aria-hidden
+              className="absolute -top-1 -right-1 flex items-center justify-center rounded-full border border-border bg-muted dark:bg-card shadow-sm"
+              style={{ width: 14, height: 14 }}
+            >
+              <AliasBadge
+                style={{
+                  width: 9,
+                  height: 9,
+                  color: plugin.aliasIconColor || getIconColor(plugin.brandColor, isDark),
+                }}
+              />
+            </span>
+          )}
+        </span>
       </NavButton>
     </div>
   )

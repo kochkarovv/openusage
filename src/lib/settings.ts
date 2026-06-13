@@ -145,8 +145,9 @@ export async function saveAliases(aliases: ProviderAlias[]): Promise<void> {
 }
 
 // Derive a virtual PluginMeta for an alias from its base provider's meta so the
-// alias card renders identical metrics. Icon is rendered from `alias.icon` by
-// the ProviderIcon component; the base iconUrl is kept as a fallback.
+// alias card renders identical metrics. The base provider iconUrl stays the main
+// icon; the alias's chosen icon is carried so the UI can overlay it as a small
+// corner badge (so it reads as "Claude, work account").
 export function aliasToVirtualMeta(
   alias: ProviderAlias,
   baseMeta: PluginMeta
@@ -155,6 +156,8 @@ export function aliasToVirtualMeta(
     ...baseMeta,
     id: alias.id,
     name: alias.name,
+    aliasIcon: alias.icon,
+    aliasIconColor: alias.iconColor,
   };
 }
 

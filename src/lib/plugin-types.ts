@@ -54,6 +54,10 @@ export type PluginMeta = {
   primaryCandidates: string[]
   /** Label of the line marked `"period": "weekly"`, if the provider has one. */
   weeklyCandidate?: string
+  /** For alias instances: chosen badge icon (lucide name) shown over the base icon. */
+  aliasIcon?: string
+  /** For alias instances: optional accent color for the badge icon. */
+  aliasIconColor?: string
 }
 
 export type PluginDisplayState = {

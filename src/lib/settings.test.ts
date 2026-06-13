@@ -470,5 +470,8 @@ describe("aliases", () => {
     expect(meta.id).toBe("claude-work")
     expect(meta.name).toBe("Claude Work")
     expect(meta.primaryCandidates).toEqual(["Session"])
+    // Keeps the base provider icon, but carries the alias's chosen badge icon.
+    expect(meta.iconUrl).toBe("data:base")
+    expect(meta.aliasIcon).toBe("Briefcase")
   })
 })
