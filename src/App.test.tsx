@@ -221,6 +221,8 @@ vi.mock("@/lib/settings", async () => {
     ...actual,
     loadPluginSettings: state.loadPluginSettingsMock,
     savePluginSettings: state.savePluginSettingsMock,
+    loadAliases: async () => [],
+    saveAliases: async () => {},
     loadAutoUpdateInterval: state.loadAutoUpdateIntervalMock,
     saveAutoUpdateInterval: state.saveAutoUpdateIntervalMock,
     loadThemeMode: state.loadThemeModeMock,

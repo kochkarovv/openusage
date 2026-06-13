@@ -6,6 +6,7 @@ import { useProbe } from "@/hooks/app/use-probe"
 import { useSettingsBootstrap } from "@/hooks/app/use-settings-bootstrap"
 import { useSettingsDisplayActions } from "@/hooks/app/use-settings-display-actions"
 import { useSettingsPluginActions } from "@/hooks/app/use-settings-plugin-actions"
+import { useAliasActions } from "@/hooks/app/use-alias-actions"
 import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
@@ -35,12 +36,16 @@ function App() {
     setPluginsMeta,
     pluginSettings,
     setPluginSettings,
+    aliases,
+    setAliases,
   } = useAppPluginStore(
     useShallow((state) => ({
       pluginsMeta: state.pluginsMeta,
       setPluginsMeta: state.setPluginsMeta,
       pluginSettings: state.pluginSettings,
       setPluginSettings: state.setPluginSettings,
+      aliases: state.aliases,
+      setAliases: state.setAliases,
     }))
   )
 
@@ -119,6 +124,7 @@ function App() {
   const { applyStartOnLogin } = useSettingsBootstrap({
     setPluginSettings,
     setPluginsMeta,
+    setAliases,
     setAutoUpdateInterval,
     setThemeMode,
     setDisplayMode,
@@ -177,6 +183,15 @@ function App() {
     setErrorForPlugins,
     startBatch,
     scheduleTrayIconUpdate,
+  })
+
+  const { saveAlias, deleteAlias } = useAliasActions({
+    aliases,
+    setAliases,
+    pluginSettings,
+    setPluginSettings,
+    setLoadingForPlugins,
+    startBatch,
   })
 
   const settingsPlugins = useSettingsPluginList({
@@ -252,6 +267,9 @@ function App() {
         onRetryPlugin: handleRetryPlugin,
         onReorder: handleReorder,
         onToggle: handleToggle,
+        aliases,
+        onSaveAlias: saveAlias,
+        onDeleteAlias: deleteAlias,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,

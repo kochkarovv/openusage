@@ -32,6 +32,9 @@ import {
   loadTimeFormatMode,
   normalizePluginSettings,
   savePluginSettings,
+  loadAliases,
+  aliasToVirtualMeta,
+  type ProviderAlias,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
   type GlobalShortcut,
@@ -46,6 +49,7 @@ import {
 type UseSettingsBootstrapArgs = {
   setPluginSettings: (value: PluginSettings | null) => void
   setPluginsMeta: (value: PluginMeta[]) => void
+  setAliases: (value: ProviderAlias[]) => void
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
   setDisplayMode: (value: DisplayMode) => void
@@ -63,6 +67,7 @@ type UseSettingsBootstrapArgs = {
 export function useSettingsBootstrap({
   setPluginSettings,
   setPluginsMeta,
+  setAliases,
   setAutoUpdateInterval,
   setThemeMode,
   setDisplayMode,
@@ -96,11 +101,26 @@ export function useSettingsBootstrap({
       try {
         const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
-        setPluginsMeta(availablePlugins)
+
+        // Aliases are virtual provider instances: derive a meta from each
+        // alias's base plugin so its card renders identical metrics.
+        const aliases = await loadAliases()
+        const baseById = new Map(availablePlugins.map((meta) => [meta.id, meta]))
+        const aliasMetas = aliases
+          .map((alias) => {
+            const base = baseById.get(alias.basePluginId)
+            return base ? aliasToVirtualMeta(alias, base) : null
+          })
+          .filter((meta): meta is PluginMeta => meta !== null)
+        const combinedMetas = [...availablePlugins, ...aliasMetas]
+
+        if (!isMounted) return
+        setPluginsMeta(combinedMetas)
+        setAliases(aliases)
 
         const storedSettings = await loadPluginSettings()
         const migratedSettings = migrateWindsurfToDevin(storedSettings)
-        const normalized = normalizePluginSettings(migratedSettings, availablePlugins)
+        const normalized = normalizePluginSettings(migratedSettings, combinedMetas, aliases)
         if (!arePluginSettingsEqual(storedSettings, normalized)) {
           await savePluginSettings(normalized)
         }
@@ -225,6 +245,7 @@ export function useSettingsBootstrap({
     migrateLegacyTraySettings,
     setPluginSettings,
     setPluginsMeta,
+    setAliases,
     setResetTimerDisplayMode,
     setStartOnLogin,
     setThemeMode,

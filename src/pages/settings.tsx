@@ -15,9 +15,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { useState } from "react";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
+import { AliasDialog } from "@/components/alias-dialog";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
@@ -36,6 +38,7 @@ import {
   type ResetTimerDisplayMode,
   type ThemeMode,
   type TimeFormatMode,
+  type ProviderAlias,
 } from "@/lib/settings";
 import { getTimeFormatter } from "@/lib/reset-tooltip";
 import type { TraySettingsPreview } from "@/hooks/app/use-tray-icon";
@@ -201,9 +204,15 @@ function MenubarIconStylePreview({
 function SortablePluginItem({
   plugin,
   onToggle,
+  isAlias = false,
+  onEdit,
+  onDelete,
 }: {
   plugin: PluginConfig;
   onToggle: (id: string) => void;
+  isAlias?: boolean;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
 }) {
   const {
     attributes,
@@ -249,6 +258,27 @@ function SortablePluginItem({
         {plugin.name}
       </span>
 
+      {isAlias && (
+        <span onClick={(e) => e.stopPropagation()} className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => onEdit?.(plugin.id)}
+            aria-label="Edit Alias"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete?.(plugin.id)}
+            aria-label="Delete Alias"
+            className="text-muted-foreground hover:text-destructive transition-colors"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </span>
+      )}
+
       {/* Wrap to stop Base UI's internal input.click() from bubbling to the row div */}
       <span onClick={(e) => e.stopPropagation()}>
         <Checkbox
@@ -265,6 +295,9 @@ interface SettingsPageProps {
   plugins: PluginConfig[];
   onReorder: (orderedIds: string[]) => void;
   onToggle: (id: string) => void;
+  aliases: ProviderAlias[];
+  onSaveAlias: (alias: ProviderAlias) => void;
+  onDeleteAlias: (id: string) => void;
   autoUpdateInterval: AutoUpdateIntervalMinutes;
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void;
   themeMode: ThemeMode;
@@ -290,6 +323,9 @@ export function SettingsPage({
   plugins,
   onReorder,
   onToggle,
+  aliases,
+  onSaveAlias,
+  onDeleteAlias,
   autoUpdateInterval,
   onAutoUpdateIntervalChange,
   themeMode,
@@ -316,6 +352,12 @@ export function SettingsPage({
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  const [aliasDialog, setAliasDialog] = useState<{
+    editing: ProviderAlias | null;
+  } | null>(null);
+  const aliasById = new Map(aliases.map((alias) => [alias.id, alias]));
+  const takenIds = plugins.map((plugin) => plugin.id);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -579,12 +621,35 @@ export function SettingsPage({
                   key={plugin.id}
                   plugin={plugin}
                   onToggle={onToggle}
+                  isAlias={aliasById.has(plugin.id)}
+                  onEdit={(id) =>
+                    setAliasDialog({ editing: aliasById.get(id) ?? null })
+                  }
+                  onDelete={onDeleteAlias}
                 />
               ))}
             </SortableContext>
           </DndContext>
         </div>
+        <div className="mt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAliasDialog({ editing: null })}
+          >
+            Add Alias
+          </Button>
+        </div>
       </section>
+
+      {aliasDialog && (
+        <AliasDialog
+          existing={aliasDialog.editing}
+          takenIds={takenIds}
+          onSave={onSaveAlias}
+          onClose={() => setAliasDialog(null)}
+        />
+      )}
     </div>
   );
 }

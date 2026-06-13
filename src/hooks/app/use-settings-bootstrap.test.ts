@@ -23,6 +23,8 @@ const {
   migrateWindsurfToDevinMock,
   normalizePluginSettingsMock,
   savePluginSettingsMock,
+  loadAliasesMock,
+  aliasToVirtualMetaMock,
 } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
   isTauriMock: vi.fn(),
@@ -45,6 +47,8 @@ const {
   migrateWindsurfToDevinMock: vi.fn(),
   normalizePluginSettingsMock: vi.fn(),
   savePluginSettingsMock: vi.fn(),
+  loadAliasesMock: vi.fn(),
+  aliasToVirtualMetaMock: vi.fn(),
 }))
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -84,6 +88,8 @@ vi.mock("@/lib/settings", () => ({
   migrateWindsurfToDevin: migrateWindsurfToDevinMock,
   normalizePluginSettings: normalizePluginSettingsMock,
   savePluginSettings: savePluginSettingsMock,
+  loadAliases: loadAliasesMock,
+  aliasToVirtualMeta: aliasToVirtualMetaMock,
 }))
 
 import { useSettingsBootstrap } from "@/hooks/app/use-settings-bootstrap"
@@ -92,6 +98,7 @@ function createArgs() {
   return {
     setPluginSettings: vi.fn(),
     setPluginsMeta: vi.fn(),
+    setAliases: vi.fn(),
     setAutoUpdateInterval: vi.fn(),
     setThemeMode: vi.fn(),
     setDisplayMode: vi.fn(),
@@ -130,7 +137,11 @@ describe("useSettingsBootstrap", () => {
     migrateWindsurfToDevinMock.mockReset()
     normalizePluginSettingsMock.mockReset()
     savePluginSettingsMock.mockReset()
+    loadAliasesMock.mockReset()
+    aliasToVirtualMetaMock.mockReset()
 
+    loadAliasesMock.mockResolvedValue([])
+    aliasToVirtualMetaMock.mockImplementation((_alias, base) => base)
     isTauriMock.mockReturnValue(true)
     isAutostartEnabledMock.mockResolvedValue(true)
     invokeMock.mockResolvedValue([
@@ -244,7 +255,8 @@ describe("useSettingsBootstrap", () => {
     await waitFor(() => {
       expect(normalizePluginSettingsMock).toHaveBeenCalledWith(
         migratedSettings,
-        availablePlugins
+        availablePlugins,
+        []
       )
       expect(savePluginSettingsMock).toHaveBeenCalledWith(migratedSettings)
       expect(args.setPluginSettings).toHaveBeenCalledWith(migratedSettings)

@@ -16,6 +16,7 @@ import type {
   ResetTimerDisplayMode,
   ThemeMode,
   TimeFormatMode,
+  ProviderAlias,
 } from "@/lib/settings"
 
 type AppContentDerivedProps = {
@@ -28,6 +29,9 @@ export type AppContentActionProps = {
   onRetryPlugin: (id: string) => void
   onReorder: (orderedIds: string[]) => void
   onToggle: (id: string) => void
+  aliases: ProviderAlias[]
+  onSaveAlias: (alias: ProviderAlias) => void
+  onDeleteAlias: (id: string) => void
   onAutoUpdateIntervalChange: (value: AutoUpdateIntervalMinutes) => void
   onThemeModeChange: (mode: ThemeMode) => void
   onDisplayModeChange: (mode: DisplayMode) => void
@@ -50,6 +54,9 @@ export function AppContent({
   onRetryPlugin,
   onReorder,
   onToggle,
+  aliases,
+  onSaveAlias,
+  onDeleteAlias,
   onAutoUpdateIntervalChange,
   onThemeModeChange,
   onDisplayModeChange,
@@ -111,6 +118,9 @@ export function AppContent({
         plugins={settingsPlugins}
         onReorder={onReorder}
         onToggle={onToggle}
+        aliases={aliases}
+        onSaveAlias={onSaveAlias}
+        onDeleteAlias={onDeleteAlias}
         autoUpdateInterval={autoUpdateInterval}
         onAutoUpdateIntervalChange={onAutoUpdateIntervalChange}
         themeMode={themeMode}
