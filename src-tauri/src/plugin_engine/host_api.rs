@@ -802,10 +802,14 @@ fn inject_env<'js>(
 ) -> rquickjs::Result<()> {
     // Per-instance overrides (used by aliases) are honored only for whitelisted
     // vars. This keeps aliases from injecting arbitrary env into plugins.
+    // Values are tilde-expanded so injected config-dir paths match what the OS
+    // and provider CLIs store (e.g. the macOS keychain service name is hashed
+    // from the absolute CLAUDE_CONFIG_DIR, which a shell `export` would already
+    // have expanded but an injected alias value would not).
     let overrides: HashMap<String, String> = env_overrides
         .iter()
         .filter(|(name, _)| WHITELISTED_ENV_VARS.contains(&name.as_str()))
-        .map(|(k, v)| (k.clone(), v.clone()))
+        .map(|(k, v)| (k.clone(), expand_path(v)))
         .collect();
 
     let env_obj = Object::new(ctx.clone())?;
@@ -3237,7 +3241,9 @@ mod tests {
     #[test]
     fn env_override_applies_only_to_whitelisted_vars() {
         let mut overrides = HashMap::new();
-        // CLAUDE_CONFIG_DIR is whitelisted -> override must win.
+        // CLAUDE_CONFIG_DIR is whitelisted -> override must win. The tilde is
+        // expanded so the value matches what the OS/CLI stores (e.g. the macOS
+        // keychain service name is hashed from the absolute path).
         overrides.insert("CLAUDE_CONFIG_DIR".to_string(), "~/.claude-test".to_string());
         // HOME is not whitelisted -> override must be ignored (get returns None).
         overrides.insert("HOME".to_string(), "/tmp/evil".to_string());
@@ -3259,7 +3265,11 @@ mod tests {
             let value: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("CLAUDE_CONFIG_DIR")"#)
                 .expect("get override");
-            assert_eq!(value, Some("~/.claude-test".to_string()));
+            assert_eq!(value, Some(expand_path("~/.claude-test")));
+            assert!(
+                !value.unwrap().starts_with('~'),
+                "override tilde must be expanded"
+            );
 
             let blocked: Option<String> = ctx
                 .eval(r#"__openusage_ctx.host.env.get("HOME")"#)

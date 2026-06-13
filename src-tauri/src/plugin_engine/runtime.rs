@@ -788,7 +788,11 @@ mod tests {
 
         let output = run_probe(&plugin, &temp_app_dir("env"), "0.0.0", &overrides);
         match output.lines.first() {
-            Some(MetricLine::Text { value, .. }) => assert_eq!(value, "~/.claude-work"),
+            // Tilde is expanded before injection, so the plugin sees an absolute path.
+            Some(MetricLine::Text { value, .. }) => {
+                assert!(!value.starts_with('~'), "tilde should be expanded: {value}");
+                assert!(value.ends_with("/.claude-work"), "unexpected value: {value}");
+            }
             other => panic!("expected text line, got {:?}", other),
         }
     }
