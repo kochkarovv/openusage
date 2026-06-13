@@ -188,6 +188,8 @@ function App() {
   const { saveAlias, deleteAlias } = useAliasActions({
     aliases,
     setAliases,
+    pluginsMeta,
+    setPluginsMeta,
     pluginSettings,
     setPluginSettings,
     setLoadingForPlugins,
