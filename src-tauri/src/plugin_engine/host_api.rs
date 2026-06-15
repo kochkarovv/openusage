@@ -1674,28 +1674,35 @@ enum CcusageProvider {
     Codex,
 }
 
-static CCUSAGE_ACTIVE_PROVIDERS: OnceLock<Mutex<HashSet<CcusageProvider>>> = OnceLock::new();
+// Keyed by (provider, resolved config dir). Deduping genuinely identical
+// concurrent queries is intentional, but different accounts (aliases pointing at
+// different config dirs) must be allowed to run at the same time — otherwise one
+// alias's ccusage query is skipped and its token/model breakdown goes missing.
+type CcusageQueryKey = (CcusageProvider, Option<String>);
+
+static CCUSAGE_ACTIVE_QUERIES: OnceLock<Mutex<HashSet<CcusageQueryKey>>> = OnceLock::new();
 
 struct CcusageQueryGuard {
-    provider: CcusageProvider,
+    key: CcusageQueryKey,
 }
 
 impl CcusageQueryGuard {
-    fn acquire(provider: CcusageProvider) -> Option<Self> {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+    fn acquire(provider: CcusageProvider, home: Option<String>) -> Option<Self> {
+        let key = (provider, home);
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        if !active.insert(provider) {
+        if !active.insert(key.clone()) {
             return None;
         }
-        Some(Self { provider })
+        Some(Self { key })
     }
 }
 
 impl Drop for CcusageQueryGuard {
     fn drop(&mut self) {
-        let active = CCUSAGE_ACTIVE_PROVIDERS.get_or_init(|| Mutex::new(HashSet::new()));
+        let active = CCUSAGE_ACTIVE_QUERIES.get_or_init(|| Mutex::new(HashSet::new()));
         let mut active = active.lock().unwrap_or_else(|err| err.into_inner());
-        active.remove(&self.provider);
+        active.remove(&self.key);
     }
 }
 
@@ -2433,7 +2440,10 @@ fn inject_ccusage<'js>(
                     }
                 };
                 let provider = resolve_ccusage_provider(&opts, &pid);
-                let Some(_active_query) = CcusageQueryGuard::acquire(provider) else {
+                // Key the guard by the resolved config dir so aliases targeting
+                // different accounts don't block each other.
+                let home_key = ccusage_home_override(&opts, provider).map(|h| expand_path(&h));
+                let Some(_active_query) = CcusageQueryGuard::acquire(provider, home_key) else {
                     log::warn!("[plugin:{}] ccusage query already running", pid);
                     return Ok(serde_json::json!({ "status": "runner_failed" }).to_string());
                 };
@@ -4433,21 +4443,53 @@ Saved lockfile
 
     #[test]
     fn ccusage_query_guard_blocks_overlapping_provider_query() {
-        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex)
+        let home = Some("/tmp/guard-codex".to_string());
+        let first = CcusageQueryGuard::acquire(CcusageProvider::Codex, home.clone())
             .expect("first query should acquire guard");
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_none(),
-            "second query for same provider should be blocked"
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, home.clone()).is_none(),
+            "second query for same provider + dir should be blocked"
         );
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Claude).is_some(),
+            CcusageQueryGuard::acquire(CcusageProvider::Claude, home.clone()).is_some(),
             "different provider should have its own guard"
         );
         drop(first);
         assert!(
-            CcusageQueryGuard::acquire(CcusageProvider::Codex).is_some(),
+            CcusageQueryGuard::acquire(CcusageProvider::Codex, home).is_some(),
             "guard should release on drop"
         );
+    }
+
+    #[test]
+    fn ccusage_query_guard_allows_concurrent_distinct_config_dirs() {
+        // Two Claude aliases pointing at different config dirs must both run
+        // concurrently; before this fix the second was skipped ("already running")
+        // and lost its token/model breakdown.
+        let personal = CcusageQueryGuard::acquire(
+            CcusageProvider::Claude,
+            Some("/Users/me/.claude-personal".to_string()),
+        )
+        .expect("personal alias should acquire");
+        let work = CcusageQueryGuard::acquire(
+            CcusageProvider::Claude,
+            Some("/Users/me/.claude-work".to_string()),
+        );
+        assert!(
+            work.is_some(),
+            "a different config dir must not be blocked by another alias"
+        );
+        // Same dir as one already running is still deduped.
+        assert!(
+            CcusageQueryGuard::acquire(
+                CcusageProvider::Claude,
+                Some("/Users/me/.claude-personal".to_string())
+            )
+            .is_none(),
+            "identical provider + dir should still be deduped"
+        );
+        drop(personal);
+        drop(work);
     }
 
     #[test]
