@@ -101,6 +101,7 @@ function App() {
     pluginStates,
     setLoadingForPlugins,
     setErrorForPlugins,
+    clearPluginStates,
     startBatch,
     autoUpdateNextAt,
     setAutoUpdateNextAt,
@@ -198,7 +199,9 @@ function App() {
     pluginSettings,
     setPluginSettings,
     setLoadingForPlugins,
+    clearPluginStates,
     startBatch,
+    scheduleTrayIconUpdate,
   })
 
   const settingsPlugins = useSettingsPluginList({
@@ -248,6 +251,18 @@ function App() {
     [activeView, handleRetryPlugin, scheduleTrayIconUpdate, setActiveView, setPluginSettings]
   )
 
+  // Deleting the alias currently being viewed should return home (mirrors the
+  // disable-plugin flow), otherwise the detail view shows "provider not found".
+  const handleDeleteAlias = useCallback(
+    (id: string) => {
+      deleteAlias(id)
+      if (activeView === id) {
+        setActiveView("home")
+      }
+    },
+    [activeView, deleteAlias, setActiveView]
+  )
+
   const isPluginRefreshAvailable = useCallback(
     (pluginId: string) => {
       const pluginState = pluginStates[pluginId]
@@ -276,7 +291,7 @@ function App() {
         onToggle: handleToggle,
         aliases,
         onSaveAlias: saveAlias,
-        onDeleteAlias: deleteAlias,
+        onDeleteAlias: handleDeleteAlias,
         onAutoUpdateIntervalChange: handleAutoUpdateIntervalChange,
         onThemeModeChange: handleThemeModeChange,
         onDisplayModeChange: handleDisplayModeChange,

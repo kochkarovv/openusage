@@ -102,6 +102,27 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
     [getErrorMessage, onProbeResult, updatePluginStates]
   )
 
+  const clearPluginStates = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return
+      const remove = new Set(ids)
+      for (const id of ids) manualRefreshIdsRef.current.delete(id)
+      updatePluginStates((prev) => {
+        let changed = false
+        const next: Record<string, PluginState> = {}
+        for (const [id, state] of Object.entries(prev)) {
+          if (remove.has(id)) {
+            changed = true
+            continue
+          }
+          next[id] = state
+        }
+        return changed ? next : prev
+      })
+    },
+    [updatePluginStates]
+  )
+
   return {
     pluginStates,
     pluginStatesRef,
@@ -109,5 +130,6 @@ export function useProbeState({ onProbeResult }: UseProbeStateArgs) {
     setLoadingForPlugins,
     setErrorForPlugins,
     handleProbeResult,
+    clearPluginStates,
   }
 }

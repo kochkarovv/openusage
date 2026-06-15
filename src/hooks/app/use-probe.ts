@@ -26,6 +26,7 @@ export function useProbe({
     setLoadingForPlugins,
     setErrorForPlugins,
     handleProbeResult,
+    clearPluginStates,
   } = useProbeState({ onProbeResult })
 
   const handleBatchComplete = useCallback(() => {}, [])
@@ -67,6 +68,7 @@ export function useProbe({
     pluginStates,
     setLoadingForPlugins,
     setErrorForPlugins,
+    clearPluginStates,
     startBatch,
     autoUpdateNextAt,
     setAutoUpdateNextAt,
