@@ -20,6 +20,7 @@ import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { AliasDialog } from "@/components/alias-dialog";
+import { ALIAS_PROVIDERS } from "@/lib/alias-providers";
 import { GlobalShortcutSection } from "@/components/global-shortcut-section";
 import { getBarFillLayout, getTrayIconSizePx } from "@/lib/tray-bars-icon";
 import {
@@ -358,6 +359,10 @@ export function SettingsPage({
   } | null>(null);
   const aliasById = new Map(aliases.map((alias) => [alias.id, alias]));
   const takenIds = plugins.map((plugin) => plugin.id);
+  // Alias-capable providers that are actually loaded (base plugin present).
+  const availableAliasProviders = ALIAS_PROVIDERS.filter((def) =>
+    plugins.some((plugin) => plugin.id === def.id)
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -646,6 +651,7 @@ export function SettingsPage({
         <AliasDialog
           existing={aliasDialog.editing}
           takenIds={takenIds}
+          availableProviders={availableAliasProviders}
           onSave={onSaveAlias}
           onClose={() => setAliasDialog(null)}
         />

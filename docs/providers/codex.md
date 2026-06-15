@@ -94,6 +94,14 @@ If file-based OAuth credentials are missing, invalid, or fail with an auth/sessi
 
 Keychain fallback is available on macOS only.
 
+### Aliases (multiple accounts)
+
+You can track more than one Codex account by adding aliases in Settings → Add Alias
+(pick Codex as the provider). Each alias has its own name and icon and points at a
+different config directory via `CODEX_HOME` (for example `~/.codex-work`), so it reads
+that directory's `auth.json` / keychain entry and usage. Aliases appear as their own
+cards alongside the default Codex card.
+
 Expected auth payload shape (file or keychain JSON value):
 
 ```jsonc
