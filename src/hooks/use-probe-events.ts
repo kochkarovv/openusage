@@ -3,6 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event"
 import { invoke } from "@tauri-apps/api/core"
 import type { PluginOutput } from "@/lib/plugin-types"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
+import { toAliasSpec } from "@/lib/settings"
 
 type ProbeResult = {
   batchId: string
@@ -95,15 +96,9 @@ export function useProbeEvents({ onResult, onBatchComplete }: UseProbeEventsOpti
     activeBatchIds.current.add(batchId)
     // Send alias specs so the backend can build virtual alias instances for any
     // alias ids in this batch. Read from the store at call time.
-    const aliases = useAppPluginStore.getState().aliases.map((alias) => ({
-      id: alias.id,
-      basePluginId: alias.basePluginId,
-      name: alias.name,
-      env: alias.env,
-    }))
-    const args = pluginIds
-      ? { batchId, pluginIds, aliases }
-      : { batchId, aliases }
+    const aliases = useAppPluginStore.getState().aliases.map(toAliasSpec)
+    // `pluginIds: undefined` serializes the same as omitting it (Rust Option = None).
+    const args = { batchId, pluginIds, aliases }
     try {
       const result = await invoke<ProbeBatchStarted>("start_probe_batch", args)
       return result.pluginIds

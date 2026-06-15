@@ -277,19 +277,16 @@ async fn start_probe_batch(
     };
 
     let alias_specs: Vec<AliasSpec> = aliases.unwrap_or_default();
-    let alias_by_id: HashMap<String, AliasSpec> = alias_specs
-        .iter()
-        .map(|a| (a.id.clone(), a.clone()))
-        .collect();
 
     // Each work item carries its own env overrides (empty for base providers).
+    // Only the plugins actually selected are cloned (the queue must own them);
+    // the lookup map borrows so we don't deep-clone every plugin's entry script.
     let work: Vec<(plugin_engine::manifest::LoadedPlugin, HashMap<String, String>)> =
         match plugin_ids {
             Some(ids) => {
-                let by_id: HashMap<String, plugin_engine::manifest::LoadedPlugin> = plugins
+                let by_id: HashMap<&str, &plugin_engine::manifest::LoadedPlugin> = plugins
                     .iter()
-                    .cloned()
-                    .map(|plugin| (plugin.manifest.id.clone(), plugin))
+                    .map(|plugin| (plugin.manifest.id.as_str(), plugin))
                     .collect();
                 let mut seen = HashSet::new();
                 ids.into_iter()
@@ -297,10 +294,10 @@ async fn start_probe_batch(
                         if !seen.insert(id.clone()) {
                             return None;
                         }
-                        if let Some(base) = by_id.get(&id) {
-                            return Some((base.clone(), HashMap::new()));
+                        if let Some(base) = by_id.get(id.as_str()) {
+                            return Some(((*base).clone(), HashMap::new()));
                         }
-                        if let Some(spec) = alias_by_id.get(&id) {
+                        if let Some(spec) = alias_specs.iter().find(|a| a.id == id) {
                             return build_alias_plugin(&plugins, spec)
                                 .map(|plugin| (plugin, spec.env.clone()));
                         }
@@ -309,16 +306,19 @@ async fn start_probe_batch(
                     .collect()
             }
             None => {
-                let mut items: Vec<_> = plugins
+                // Build alias instances while we can still borrow `plugins`, then
+                // move the base plugins into the work list (no per-item clone).
+                let alias_items: Vec<_> = alias_specs
                     .iter()
-                    .cloned()
+                    .filter_map(|spec| {
+                        build_alias_plugin(&plugins, spec).map(|plugin| (plugin, spec.env.clone()))
+                    })
+                    .collect();
+                let mut items: Vec<_> = plugins
+                    .into_iter()
                     .map(|plugin| (plugin, HashMap::new()))
                     .collect();
-                for spec in &alias_specs {
-                    if let Some(plugin) = build_alias_plugin(&plugins, spec) {
-                        items.push((plugin, spec.env.clone()));
-                    }
-                }
+                items.extend(alias_items);
                 items
             }
         };

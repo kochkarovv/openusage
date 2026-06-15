@@ -25,16 +25,16 @@ export function AliasDialog({
   const initialBaseId = existing?.basePluginId ?? fallback?.id ?? "claude"
 
   const [baseId, setBaseId] = useState(initialBaseId)
-  const def =
-    getAliasProvider(baseId) ?? availableProviders.find((p) => p.id === baseId) ?? fallback
+  const def = getAliasProvider(baseId) ?? fallback
 
   const [name, setName] = useState(existing?.name ?? "")
   const [value, setValue] = useState(
-    existing ? (def ? existing.env[def.envVar] ?? "" : "") : def?.defaultValue ?? ""
+    existing ? existing.env[def?.envVar ?? ""] ?? "" : def?.defaultValue ?? ""
   )
   const [icon, setIcon] = useState(existing?.icon ?? "Briefcase")
   const [color, setColor] = useState(existing?.iconColor ?? "")
 
+  // Close on Escape and when the menubar panel hides (matches the other dialogs).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -42,8 +42,15 @@ export function AliasDialog({
         onClose()
       }
     }
+    const onVisibility = () => {
+      if (document.hidden) onClose()
+    }
     document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
   }, [onClose])
 
   // Switching base provider only makes sense while creating; reset the value to

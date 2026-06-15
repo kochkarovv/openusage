@@ -33,7 +33,6 @@ import {
   normalizePluginSettings,
   savePluginSettings,
   loadAliases,
-  aliasToVirtualMeta,
   type ProviderAlias,
   type AutoUpdateIntervalMinutes,
   type DisplayMode,
@@ -48,7 +47,7 @@ import {
 
 type UseSettingsBootstrapArgs = {
   setPluginSettings: (value: PluginSettings | null) => void
-  setPluginsMeta: (value: PluginMeta[]) => void
+  setBaseMetas: (value: PluginMeta[]) => void
   setAliases: (value: ProviderAlias[]) => void
   setAutoUpdateInterval: (value: AutoUpdateIntervalMinutes) => void
   setThemeMode: (value: ThemeMode) => void
@@ -66,7 +65,7 @@ type UseSettingsBootstrapArgs = {
 
 export function useSettingsBootstrap({
   setPluginSettings,
-  setPluginsMeta,
+  setBaseMetas,
   setAliases,
   setAutoUpdateInterval,
   setThemeMode,
@@ -102,25 +101,15 @@ export function useSettingsBootstrap({
         const availablePlugins = await invoke<PluginMeta[]>("list_plugins")
         if (!isMounted) return
 
-        // Aliases are virtual provider instances: derive a meta from each
-        // alias's base plugin so its card renders identical metrics.
+        // Aliases are virtual provider instances; their metas are derived from the
+        // base metas + aliases reactively (in App), so we just store both here.
         const aliases = await loadAliases()
-        const baseById = new Map(availablePlugins.map((meta) => [meta.id, meta]))
-        const aliasMetas = aliases
-          .map((alias) => {
-            const base = baseById.get(alias.basePluginId)
-            return base ? aliasToVirtualMeta(alias, base) : null
-          })
-          .filter((meta): meta is PluginMeta => meta !== null)
-        const combinedMetas = [...availablePlugins, ...aliasMetas]
-
-        if (!isMounted) return
-        setPluginsMeta(combinedMetas)
+        setBaseMetas(availablePlugins)
         setAliases(aliases)
 
         const storedSettings = await loadPluginSettings()
         const migratedSettings = migrateWindsurfToDevin(storedSettings)
-        const normalized = normalizePluginSettings(migratedSettings, combinedMetas, aliases)
+        const normalized = normalizePluginSettings(migratedSettings, availablePlugins, aliases)
         if (!arePluginSettingsEqual(storedSettings, normalized)) {
           await savePluginSettings(normalized)
         }
@@ -244,7 +233,7 @@ export function useSettingsBootstrap({
     migrateWindsurfToDevin,
     migrateLegacyTraySettings,
     setPluginSettings,
-    setPluginsMeta,
+    setBaseMetas,
     setAliases,
     setResetTimerDisplayMode,
     setStartOnLogin,

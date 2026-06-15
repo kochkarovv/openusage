@@ -26,6 +26,7 @@ import {
   loadThemeMode,
   normalizePluginSettings,
   aliasToVirtualMeta,
+  buildAliasMetas,
   saveAutoUpdateInterval,
   saveDisplayMode,
   saveGlobalShortcut,
@@ -473,5 +474,12 @@ describe("aliases", () => {
     // Keeps the base provider icon, but carries the alias's chosen badge icon.
     expect(meta.iconUrl).toBe("data:base")
     expect(meta.aliasIcon).toBe("Briefcase")
+  })
+
+  it("buildAliasMetas derives metas for aliases whose base is loaded and skips the rest", () => {
+    const orphan: ProviderAlias = { ...alias, id: "codex-x", basePluginId: "codex" }
+    const metas = buildAliasMetas([alias, orphan], [baseMeta])
+    expect(metas.map((m) => m.id)).toEqual(["claude-work"])
+    expect(metas[0].name).toBe("Claude Work")
   })
 })

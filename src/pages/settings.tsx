@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
@@ -357,12 +357,16 @@ export function SettingsPage({
   const [aliasDialog, setAliasDialog] = useState<{
     editing: ProviderAlias | null;
   } | null>(null);
-  const aliasById = new Map(aliases.map((alias) => [alias.id, alias]));
-  const takenIds = plugins.map((plugin) => plugin.id);
-  // Alias-capable providers that are actually loaded (base plugin present).
-  const availableAliasProviders = ALIAS_PROVIDERS.filter((def) =>
-    plugins.some((plugin) => plugin.id === def.id)
+  const aliasById = useMemo(
+    () => new Map(aliases.map((alias) => [alias.id, alias])),
+    [aliases]
   );
+  const takenIds = useMemo(() => plugins.map((plugin) => plugin.id), [plugins]);
+  // Alias-capable providers that are actually loaded (base plugin present).
+  const availableAliasProviders = useMemo(() => {
+    const ids = new Set(plugins.map((plugin) => plugin.id));
+    return ALIAS_PROVIDERS.filter((def) => ids.has(def.id));
+  }, [plugins]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;

@@ -161,6 +161,40 @@ export function aliasToVirtualMeta(
   };
 }
 
+// Derive the virtual metas for all aliases whose base provider is loaded. This is
+// the single source of truth for alias metas; consumers combine it with the base
+// metas reactively (see App), so there is no separately-stored, hand-synced copy.
+export function buildAliasMetas(
+  aliases: ProviderAlias[],
+  baseMetas: PluginMeta[]
+): PluginMeta[] {
+  const baseById = new Map(baseMetas.map((meta) => [meta.id, meta]));
+  return aliases
+    .map((alias) => {
+      const base = baseById.get(alias.basePluginId);
+      return base ? aliasToVirtualMeta(alias, base) : null;
+    })
+    .filter((meta): meta is PluginMeta => meta !== null);
+}
+
+// The shape the Rust `start_probe_batch` command expects for each alias (camelCase
+// IPC). Kept here so the wire contract lives in one place.
+export type AliasSpec = {
+  id: string;
+  basePluginId: string;
+  name: string;
+  env: Record<string, string>;
+};
+
+export function toAliasSpec(alias: ProviderAlias): AliasSpec {
+  return {
+    id: alias.id,
+    basePluginId: alias.basePluginId,
+    name: alias.name,
+    env: alias.env,
+  };
+}
+
 // TODO(remove after 2026-09-01): One-time Windsurf -> Devin settings migration.
 export function migrateWindsurfToDevin(settings: PluginSettings): PluginSettings {
   const hasDevin = settings.order.includes("devin");

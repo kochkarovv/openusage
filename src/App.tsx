@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { useShallow } from "zustand/react/shallow"
 import { AppShell } from "@/components/app/app-shell"
 import { useAppPluginViews } from "@/hooks/app/use-app-plugin-views"
@@ -11,7 +11,7 @@ import { useSettingsPluginList } from "@/hooks/app/use-settings-plugin-list"
 import { useSettingsSystemActions } from "@/hooks/app/use-settings-system-actions"
 import { useSettingsTheme } from "@/hooks/app/use-settings-theme"
 import { useTrayIcon } from "@/hooks/app/use-tray-icon"
-import { REFRESH_COOLDOWN_MS, savePluginSettings } from "@/lib/settings"
+import { REFRESH_COOLDOWN_MS, savePluginSettings, buildAliasMetas } from "@/lib/settings"
 import { type PluginContextAction } from "@/components/side-nav"
 import { useAppPluginStore } from "@/stores/app-plugin-store"
 import { useAppPreferencesStore } from "@/stores/app-preferences-store"
@@ -32,21 +32,28 @@ function App() {
   )
 
   const {
-    pluginsMeta,
-    setPluginsMeta,
+    baseMetas,
+    setBaseMetas,
     pluginSettings,
     setPluginSettings,
     aliases,
     setAliases,
   } = useAppPluginStore(
     useShallow((state) => ({
-      pluginsMeta: state.pluginsMeta,
-      setPluginsMeta: state.setPluginsMeta,
+      baseMetas: state.baseMetas,
+      setBaseMetas: state.setBaseMetas,
       pluginSettings: state.pluginSettings,
       setPluginSettings: state.setPluginSettings,
       aliases: state.aliases,
       setAliases: state.setAliases,
     }))
+  )
+
+  // The provider list shown everywhere = backend base metas + derived alias metas.
+  // Deriving it here keeps aliases reactive: changing `aliases` updates every view.
+  const pluginsMeta = useMemo(
+    () => [...baseMetas, ...buildAliasMetas(aliases, baseMetas)],
+    [baseMetas, aliases]
   )
 
   const {
@@ -123,7 +130,7 @@ function App() {
 
   const { applyStartOnLogin } = useSettingsBootstrap({
     setPluginSettings,
-    setPluginsMeta,
+    setBaseMetas,
     setAliases,
     setAutoUpdateInterval,
     setThemeMode,
@@ -188,8 +195,6 @@ function App() {
   const { saveAlias, deleteAlias } = useAliasActions({
     aliases,
     setAliases,
-    pluginsMeta,
-    setPluginsMeta,
     pluginSettings,
     setPluginSettings,
     setLoadingForPlugins,

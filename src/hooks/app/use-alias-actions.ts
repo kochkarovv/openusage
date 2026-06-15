@@ -2,11 +2,9 @@ import { useCallback } from "react"
 import {
   saveAliases,
   savePluginSettings,
-  aliasToVirtualMeta,
   type ProviderAlias,
   type PluginSettings,
 } from "@/lib/settings"
-import type { PluginMeta } from "@/lib/plugin-types"
 
 export function makeAliasId(
   basePluginId: string,
@@ -41,36 +39,9 @@ export function removeAlias(
   return aliases.filter((a) => a.id !== id)
 }
 
-// Keep pluginsMeta in sync when aliases change at runtime: every render path
-// (overview cards, sidebar, settings list) looks an id up in pluginsMeta and
-// drops ids with no entry. Bootstrap seeds these at startup; these helpers do
-// it for create/edit/delete so a new alias appears immediately.
-export function upsertAliasMeta(
-  pluginsMeta: PluginMeta[],
-  alias: ProviderAlias
-): PluginMeta[] {
-  const base = pluginsMeta.find((meta) => meta.id === alias.basePluginId)
-  if (!base) return pluginsMeta
-  const meta = aliasToVirtualMeta(alias, base)
-  const idx = pluginsMeta.findIndex((m) => m.id === alias.id)
-  if (idx === -1) return [...pluginsMeta, meta]
-  const next = pluginsMeta.slice()
-  next[idx] = meta
-  return next
-}
-
-export function removeAliasMeta(
-  pluginsMeta: PluginMeta[],
-  id: string
-): PluginMeta[] {
-  return pluginsMeta.filter((meta) => meta.id !== id)
-}
-
 type UseAliasActionsArgs = {
   aliases: ProviderAlias[]
   setAliases: (value: ProviderAlias[]) => void
-  pluginsMeta: PluginMeta[]
-  setPluginsMeta: (value: PluginMeta[]) => void
   pluginSettings: PluginSettings | null
   setPluginSettings: (value: PluginSettings | null) => void
   setLoadingForPlugins: (ids: string[]) => void
@@ -80,13 +51,13 @@ type UseAliasActionsArgs = {
 export function useAliasActions({
   aliases,
   setAliases,
-  pluginsMeta,
-  setPluginsMeta,
   pluginSettings,
   setPluginSettings,
   setLoadingForPlugins,
   startBatch,
 }: UseAliasActionsArgs) {
+  // The alias's virtual meta and its card are derived reactively from `aliases`
+  // (see App), so saving/deleting only needs to update `aliases` + plugin order.
   const saveAlias = useCallback(
     (alias: ProviderAlias) => {
       const nextAliases = upsertAlias(aliases, alias)
@@ -94,9 +65,6 @@ export function useAliasActions({
       void saveAliases(nextAliases).catch((error) => {
         console.error("Failed to save alias:", error)
       })
-
-      // Add/replace the alias's virtual meta so it renders immediately.
-      setPluginsMeta(upsertAliasMeta(pluginsMeta, alias))
 
       if (pluginSettings && !pluginSettings.order.includes(alias.id)) {
         const next: PluginSettings = {
@@ -114,16 +82,7 @@ export function useAliasActions({
         console.error("Failed to start probe for alias:", error)
       })
     },
-    [
-      aliases,
-      pluginsMeta,
-      pluginSettings,
-      setAliases,
-      setPluginsMeta,
-      setLoadingForPlugins,
-      setPluginSettings,
-      startBatch,
-    ]
+    [aliases, pluginSettings, setAliases, setLoadingForPlugins, setPluginSettings, startBatch]
   )
 
   const deleteAlias = useCallback(
@@ -133,8 +92,6 @@ export function useAliasActions({
       void saveAliases(nextAliases).catch((error) => {
         console.error("Failed to save aliases after delete:", error)
       })
-
-      setPluginsMeta(removeAliasMeta(pluginsMeta, id))
 
       if (pluginSettings) {
         const next: PluginSettings = {
@@ -147,7 +104,7 @@ export function useAliasActions({
         })
       }
     },
-    [aliases, pluginsMeta, pluginSettings, setAliases, setPluginsMeta, setPluginSettings]
+    [aliases, pluginSettings, setAliases, setPluginSettings]
   )
 
   return { saveAlias, deleteAlias }

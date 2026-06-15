@@ -97,7 +97,7 @@ import { useSettingsBootstrap } from "@/hooks/app/use-settings-bootstrap"
 function createArgs() {
   return {
     setPluginSettings: vi.fn(),
-    setPluginsMeta: vi.fn(),
+    setBaseMetas: vi.fn(),
     setAliases: vi.fn(),
     setAutoUpdateInterval: vi.fn(),
     setThemeMode: vi.fn(),
