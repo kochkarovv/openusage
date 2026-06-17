@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.6.28
+
+### Features
+- **Provider aliases** — run several accounts of the same provider side by side. Add a Claude or Codex alias, point it at its own config directory, and each alias probes usage independently (own `ccusage` run, keyed by config dir).
+- Pick a base provider when creating an alias; the alias shows that provider's icon with the chosen icon as a small corner badge.
+
+### Bug Fixes
+- Show newly created/edited aliases without an app restart.
+- Tilde-expand injected env override paths.
+
+> Fork release by [@kochkarovv](https://github.com/kochkarovv). Builds are **unsigned** — on first launch, right-click the app and choose **Open** to get past Gatekeeper.
+
 ## v0.6.27
 
 ### Bug Fixes
