@@ -25,9 +25,9 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            args: "--target aarch64-apple-darwin --config tauri.fork.conf.json"
+            args: "--target aarch64-apple-darwin --config src-tauri/tauri.fork.conf.json"
           - platform: macos-latest
-            args: "--target x86_64-apple-darwin --config tauri.fork.conf.json"
+            args: "--target x86_64-apple-darwin --config src-tauri/tauri.fork.conf.json"
     runs-on: ${{ matrix.platform }}
     env:
       RELEASE_TAG: ${{ github.ref_name }}
