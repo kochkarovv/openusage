@@ -8,6 +8,9 @@ struct ClaudeSwapAccount: Equatable, Sendable {
     let identityKey: String
     let organizationID: String
     var organizationName: String? = nil
+    /// Fork: set for a plain `CLAUDE_CONFIG_DIR` home (e.g. `~/.claude-work`) instead of a Swap slot.
+    /// Its logs belong to this account by directory, so the card scans only this home.
+    var configDirectory: String? = nil
 
     func displayName(fallbackOrganization: String? = nil) -> String {
         let organization = organizationName ?? fallbackOrganization ?? "Organization \(organizationID.prefix(8))"
@@ -15,11 +18,30 @@ struct ClaudeSwapAccount: Equatable, Sendable {
     }
 
     var sessionDirectory: String {
+        if let configDirectory { return configDirectory }
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
         let slug = email.precomposedStringWithCanonicalMapping.unicodeScalars.map {
             allowed.contains($0) ? String($0) : "_"
         }.joined()
         return "\(root)/sessions/\(slot)-\(slug)"
+    }
+
+    /// Fork: every `~/.claude-*` home whose `.claude.json` names an account and organization, e.g. the
+    /// homes behind `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'`.
+    static func discoverConfigDirectories(files: TextFileAccessing, home: URL) -> [Self] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: home.path)) ?? []
+        return names.filter { $0.hasPrefix(".claude-") && $0 != ".claude-swap-backup" }.sorted().compactMap { name in
+            let directory = home.appendingPathComponent(name).path
+            guard let text = try? files.readTextIfPresent(directory + "/.claude.json"),
+                  let state = try? JSONDecoder().decode(DefaultAccountObserver.ClaudeStateFile.self, from: Data(text.utf8)),
+                  let account = state.oauthAccount,
+                  let identity = DefaultAccountObserver.claudeIdentityKey(account), identity.contains("|"),
+                  let organization = identity.split(separator: "|").last
+            else { return nil }
+            return Self(root: directory, slot: name, email: account.emailAddress ?? name,
+                        identityKey: identity, organizationID: String(organization),
+                        organizationName: account.organizationName?.nilIfEmpty, configDirectory: directory)
+        }
     }
 
     static func discover(files: TextFileAccessing, home: URL) -> [Self] {

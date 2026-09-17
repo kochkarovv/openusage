@@ -122,7 +122,11 @@ struct ProviderAccountAssembly {
             return ProviderAccountAssembly(identityKeysByCard: identityKeys, codexCards: codexCards)
         }
 
-        let swapAccounts = ClaudeSwapAccount.discover(files: observer.files, home: observer.homeDirectory())
+        var swapAccounts = ClaudeSwapAccount.discover(files: observer.files, home: observer.homeDirectory())
+        for account in ClaudeSwapAccount.discoverConfigDirectories(files: observer.files, home: observer.homeDirectory())
+            where !swapAccounts.contains(where: { $0.identityKey == account.identityKey }) {
+            swapAccounts.append(account)
+        }
         if !swapAccounts.isEmpty {
             AppLog.info(.config, "accounts: discovered \(swapAccounts.count) Claude Swap accounts")
         }
@@ -244,7 +248,8 @@ struct ProviderAccountAssembly {
             identityKeys[record.id] = account.identityKey
         }
         for index in cards.indices {
-            cards[index].additionalLogDirectories = swapAccounts.map(\.sessionDirectory)
+            // Fork: config-dir homes are scanned only by their own card (see ProviderCatalog).
+            cards[index].additionalLogDirectories = swapAccounts.filter { $0.configDirectory == nil }.map(\.sessionDirectory)
         }
         return ProviderAccountAssembly(identityKeysByCard: identityKeys, claudeCards: cards, codexCards: codexCards)
     }

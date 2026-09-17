@@ -19,7 +19,14 @@ enum ProviderCatalog {
             providers = claudeCards.map { card in
                 let identity = claudeIdentityKeys[card.id] ?? card.identityKey
                 let user = identity.split(separator: "|").first.map(String.init)
-                let scanner = ClaudeLogUsageScanner(
+                let scanner = card.swapAccount?.configDirectory.map { directory in
+                    // Fork: a config-dir home owns its own logs, attributed or not.
+                    ClaudeLogUsageScanner(
+                        environment: ConfigDirectoryEnvironment(configDirectory: directory),
+                        accountUUID: user, organizationUUID: card.organizationID,
+                        allowsUnattributedSessions: true
+                    )
+                } ?? ClaudeLogUsageScanner(
                     accountUUID: user, organizationUUID: card.organizationID,
                     allowsUnattributedSessions: card.allowsUnattributedPiUsage,
                     additionalConfigDirectories: card.additionalLogDirectories
@@ -69,5 +76,15 @@ enum ProviderCatalog {
             ZAIProvider()
         ]
         return providers
+    }
+}
+
+/// Fork: the process environment with `CLAUDE_CONFIG_DIR` pinned to one account's home.
+private struct ConfigDirectoryEnvironment: EnvironmentReading {
+    var base = ProcessEnvironmentReader()
+    let configDirectory: String
+
+    func value(for name: String) -> String? {
+        name == "CLAUDE_CONFIG_DIR" ? configDirectory : base.value(for: name)
     }
 }

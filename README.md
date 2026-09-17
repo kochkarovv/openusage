@@ -2,6 +2,8 @@
 
 Track your AI coding subscriptions from the macOS menu bar — native Swift edition.
 
+> **Fork note:** this fork adds one card per Claude Code config home (`~/.claude-work`, `~/.claude-personal`, …). See [Claude](docs/providers/claude.md#separate-claude-code-homes-fork). Build locally with `script/build_and_run.sh build`.
+
 OpenUsage shows how much of your AI coding plans you've used: session and weekly limits, credits, and spend, all in one popover. Pin your most important metrics straight into the menu bar.
 
 <p align="center">

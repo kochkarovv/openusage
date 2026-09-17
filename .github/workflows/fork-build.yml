@@ -1,0 +1,40 @@
+name: Fork Build
+
+# Fork: builds an unsigned (ad-hoc) OpenUsage.app and attaches it to a GitHub release.
+on:
+  push:
+    branches: [main, swift-sync]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test
+        run: swift test
+
+      - name: Build app
+        run: CODESIGN_IDENTITY= script/build_and_run.sh build
+
+      - name: Package
+        run: ditto -c -k --keepParent dist/OpenUsage.app OpenUsage.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenUsage
+          path: OpenUsage.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="fork-${GITHUB_REF_NAME}-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" OpenUsage.zip -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Fork build $TAG" --notes "Ad-hoc signed build of $GITHUB_SHA." --prerelease
