@@ -239,6 +239,7 @@ extension LiteLLMAuthError: CategorizedError {
 extension LiteLLMUsageError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {
+        case .budgetExceeded: .rateLimited
         case .connectionFailed: .network
         case .invalidResponse: .decoding
         case .requestFailed(let status): ErrorCategory.http(status)

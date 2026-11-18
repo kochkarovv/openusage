@@ -38,6 +38,8 @@ enum LiteLLMUsageError: Error, LocalizedError, Equatable {
     case connectionFailed
     case invalidResponse
     case requestFailed(Int)
+    /// The proxy rejected the key as over budget without saying by how much.
+    case budgetExceeded
 
     var errorDescription: String? {
         switch self {
@@ -47,6 +49,8 @@ enum LiteLLMUsageError: Error, LocalizedError, Equatable {
             return "LiteLLM usage data unavailable. Check that the host points at a LiteLLM proxy."
         case .requestFailed(let status):
             return "LiteLLM request failed (HTTP \(status))."
+        case .budgetExceeded:
+            return "This LiteLLM key is over its budget."
         }
     }
 }

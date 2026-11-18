@@ -63,7 +63,7 @@ struct APIKeysSection: View {
             Text(provider.provider.displayName)
             Spacer(minLength: 8)
             statusDot
-            Button(isOpen ? "Done" : (status == .notSet ? "Add" : "Edit")) {
+            Button(isOpen ? "Done" : (isMissingSetup ? "Add" : "Edit")) {
                 toggleExpand()
             }
             .buttonStyle(.bordered)
@@ -73,11 +73,15 @@ struct APIKeysSection: View {
         .padding(.vertical, density.controlRowPadding)
     }
 
-    /// The dot is binary, never a palette: red when no key is set, green when a key is usable (from
-    /// the environment, saved, or overriding the env). It's the row's only status signal.
+    /// No key yet, or — for a provider that also needs a host — no host yet.
+    private var isMissingSetup: Bool {
+        status == .notSet || (hostProvider != nil && savedHost == nil)
+    }
+
+    /// The dot is binary, never a palette: red while setup is missing (no key, or no host where one is
+    /// required), green once it's present. It's the row's only status signal.
     private var statusDot: some View {
-        let missing = status == .notSet || (hostProvider != nil && savedHost == nil)
-        let color = missing ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
+        let color = isMissingSetup ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
         return Circle().fill(color).frame(width: 6, height: 6)
     }
 

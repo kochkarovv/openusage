@@ -45,6 +45,7 @@ final class LiteLLMProvider: ProviderRuntime {
         do {
             response = try await usageClient.fetchKeyInfo(auth)
         } catch {
+            AppLog.error(.http, "LiteLLM /key/info failed: \(error.localizedDescription)")
             return ProviderSnapshot.error(provider: provider, error: LiteLLMUsageError.connectionFailed)
         }
         switch response.statusCode {
@@ -66,16 +67,26 @@ final class LiteLLMProvider: ProviderRuntime {
     /// Fallback for keys that may only call LLM routes: read spend/budget off the free probe's headers.
     /// No reset time or alias this way — those live only in `/key/info`.
     private func refreshFromHeaders(_ auth: LiteLLMAuth) async -> ProviderSnapshot {
-        guard let response = try? await usageClient.probeSpendHeaders(auth) else {
+        let response: HTTPResponse
+        do {
+            response = try await usageClient.probeSpendHeaders(auth)
+        } catch {
+            AppLog.error(.http, "LiteLLM spend probe failed: \(error.localizedDescription)")
             return ProviderSnapshot.error(provider: provider, error: LiteLLMUsageError.connectionFailed)
         }
         if response.statusCode == 401 {
             return ProviderSnapshot.error(provider: provider, error: LiteLLMAuthError.invalidKey)
         }
-        guard let lines = LiteLLMUsageMapper.mapHeaders(response) else {
-            return ProviderSnapshot.error(provider: provider, error: LiteLLMAuthError.forbidden)
+        do {
+            guard let lines = try LiteLLMUsageMapper.mapHeaders(response) ?? LiteLLMUsageMapper.mapBudgetExceeded(response.body)
+            else {
+                AppLog.error(.http, "LiteLLM probe returned HTTP \(response.statusCode) without spend headers")
+                return ProviderSnapshot.error(provider: provider, error: LiteLLMAuthError.forbidden)
+            }
+            return ProviderSnapshot.make(provider: provider, plan: nil, lines: lines, refreshedAt: now())
+        } catch {
+            return ProviderSnapshot.error(provider: provider, error: error)
         }
-        return ProviderSnapshot.make(provider: provider, plan: nil, lines: lines, refreshedAt: now())
     }
 }
 

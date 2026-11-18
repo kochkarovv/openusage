@@ -23,6 +23,23 @@ enum LiteLLMUsageMapper {
         return lines(spend: spend, budget: response.header("x-litellm-key-max-budget").flatMap(Double.init), resetsAt: nil)
     }
 
+    /// An over-budget key is rejected by the proxy's auth step, before it stamps the spend headers.
+    /// LiteLLM's message reads "Budget has been exceeded! Current cost: 201.3, Max budget: 200.0":
+    /// pull both numbers for a full meter. `nil` when the body isn't a budget rejection.
+    static func mapBudgetExceeded(_ body: Data) throws -> [MetricLine]? {
+        let text = String(decoding: body, as: UTF8.self)
+        guard text.range(of: "budget", options: .caseInsensitive) != nil,
+              text.range(of: "exceed", options: .caseInsensitive) != nil else { return nil }
+        let pattern = #"(?i)(?:cost|spend)[^0-9]*([0-9]+(?:\.[0-9]+)?).*?budget[^0-9]*([0-9]+(?:\.[0-9]+)?)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let spendRange = Range(match.range(at: 1), in: text),
+              let budgetRange = Range(match.range(at: 2), in: text),
+              let spend = Double(text[spendRange]), let budget = Double(text[budgetRange])
+        else { throw LiteLLMUsageError.budgetExceeded }
+        return lines(spend: spend, budget: budget, resetsAt: nil)
+    }
+
     private static func lines(spend: Double, budget: Double?, resetsAt: Date?) -> [MetricLine] {
         let spend = max(0, spend)
         var lines: [MetricLine] = []

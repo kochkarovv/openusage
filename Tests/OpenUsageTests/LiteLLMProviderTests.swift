@@ -106,6 +106,30 @@ final class LiteLLMProviderTests: XCTestCase {
         XCTAssertEqual(limit, 200)
     }
 
+    func testOverBudgetKeyReadsSpendFromRejection() async {
+        // An exhausted key is rejected in auth, before the spend headers are added.
+        let snapshot = await makeProvider(RoutingHTTPClient { request in
+            if request.url.path.hasSuffix("/key/info") { return HTTPResponse(statusCode: 403, headers: [:], body: Data()) }
+            return HTTPResponse(statusCode: 400, headers: [:], body: Data(
+                #"{"error":{"message":"Budget has been exceeded! Current cost: 201.5, Max budget: 200.0"}}"#.utf8))
+        }).refresh()
+
+        guard case .progress(_, let used, let limit, _, _, _, _) = snapshot.line(label: "Budget") else {
+            return XCTFail("missing Budget meter")
+        }
+        XCTAssertEqual(used, 201.5)
+        XCTAssertEqual(limit, 200)
+    }
+
+    func testOverBudgetWithoutNumbersSaysSo() async {
+        let snapshot = await makeProvider(RoutingHTTPClient { request in
+            if request.url.path.hasSuffix("/key/info") { return HTTPResponse(statusCode: 403, headers: [:], body: Data()) }
+            return HTTPResponse(statusCode: 400, headers: [:], body: Data(#"{"error":"ExceededBudget: key is over budget"}"#.utf8))
+        }).refresh()
+
+        XCTAssertEqual(snapshot.errorCategory, LiteLLMUsageError.budgetExceeded.errorCategory)
+    }
+
     func testAuthFailuresAreDistinct() async {
         let invalid = await makeProvider(RoutingHTTPClient { _ in
             HTTPResponse(statusCode: 401, headers: [:], body: Data())

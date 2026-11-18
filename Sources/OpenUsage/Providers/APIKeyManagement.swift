@@ -43,7 +43,7 @@ protocol APIKeyManaging: ProviderRuntime {
 
 extension APIKeyManaging {
     /// Placeholder for the key field; override when the provider's keys look different.
-    var apiKeyPlaceholder: String { "sk-or-v1-…" }
+    var apiKeyPlaceholder: String { "API key" }
 }
 
 /// An `APIKeyManaging` provider that also needs a user-supplied host (self-hosted LiteLLM). The API Key

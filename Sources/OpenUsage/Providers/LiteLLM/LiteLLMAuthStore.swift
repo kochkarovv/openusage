@@ -53,13 +53,11 @@ struct LiteLLMAuthStore: Sendable {
     static let hostField = "host"
 
     private let store: UserAPIKeyStore
-    private let environment: EnvironmentReading
 
     init(
         files: TextFileAccessing = LocalTextFileAccessor(),
         environment: EnvironmentReading = ProcessEnvironmentReader()
     ) {
-        self.environment = environment
         store = UserAPIKeyStore(
             configPaths: Self.configPaths,
             environmentNames: Self.environmentNames,
@@ -79,9 +77,7 @@ struct LiteLLMAuthStore: Sendable {
 
     /// The host as configured (config file first, then environment), before normalization.
     func currentHost() -> String? {
-        store.configValue(Self.hostField) ?? Self.hostEnvironmentNames.lazy
-            .compactMap { environment.value(for: $0)?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty }
-            .first
+        store.configValue(Self.hostField) ?? store.environmentValue(Self.hostEnvironmentNames)
     }
 
     /// Validate and save the host; an empty value removes the saved host (falling back to the env).

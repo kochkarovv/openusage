@@ -44,8 +44,7 @@ struct UserAPIKeyStore: Sendable {
     func saveKey(_ key: String) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw makeError(.missingKey) }
-        var object = Self.settingsObject(configPaths[0], files: files)
-        Self.keyFields.forEach { object.removeValue(forKey: $0) }
+        var object = Self.settingsWithoutKey(configPaths[0], files: files)
         object["apiKey"] = trimmed
         try write(object, to: configPaths[0], failure: .saveFailed)
     }
@@ -55,9 +54,7 @@ struct UserAPIKeyStore: Sendable {
     /// nothing else is removed. A missing file is a no-op.
     func deleteKey() throws {
         for path in configPaths where files.exists(path) {
-            var object = Self.settingsObject(path, files: files)
-            Self.keyFields.forEach { object.removeValue(forKey: $0) }
-            try write(object, to: path, failure: .deleteFailed)
+            try write(Self.settingsWithoutKey(path, files: files), to: path, failure: .deleteFailed)
         }
     }
 
@@ -81,10 +78,22 @@ struct UserAPIKeyStore: Sendable {
     /// Fields that hold the key itself, in read precedence order.
     private static let keyFields = ["apiKey", "api_key", "key"]
 
+    private static func settingsWithoutKey(_ path: String, files: TextFileAccessing) -> [String: Any] {
+        settingsObject(path, files: files).filter { !keyFields.contains($0.key) }
+    }
+
     /// The JSON object in `path`, or empty when the file is missing, plain text, or not an object.
     private static func settingsObject(_ path: String, files: TextFileAccessing) -> [String: Any] {
-        guard files.exists(path), let text = try? files.readText(path), let data = text.data(using: .utf8),
-              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [:] }
+        guard files.exists(path) else { return [:] }
+        guard let text = try? files.readText(path) else {
+            AppLog.error(.config, "API key config at \(path) is unreadable; rewriting it")
+            return [:]
+        }
+        guard let object = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else {
+            // A plain-text key file is a supported format; anything else that looks like JSON is corrupt.
+            if text.contains("{") { AppLog.error(.config, "API key config at \(path) isn't valid JSON; rewriting it") }
+            return [:]
+        }
         return object
     }
 
@@ -104,7 +113,12 @@ struct UserAPIKeyStore: Sendable {
     }
 
     private func keyFromEnvironment() -> String? {
-        for name in environmentNames {
+        environmentValue(environmentNames)
+    }
+
+    /// The first non-blank value among `names` in the environment, trimmed.
+    func environmentValue(_ names: [String]) -> String? {
+        for name in names {
             if let value = environment.value(for: name)?.trimmingCharacters(in: .whitespacesAndNewlines),
                !value.isEmpty {
                 return value

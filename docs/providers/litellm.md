@@ -54,4 +54,9 @@ Many proxies only let virtual keys call model routes, so `/key/info` returns 403
 sends a chat request for a model that doesn't exist (`openusage-usage-probe`). The proxy rejects it
 before calling any model, so it costs nothing, but it still reports the key's spend and budget in the
 `x-litellm-key-spend` and `x-litellm-key-max-budget` response headers. This path has no reset time or
-key alias. The probe shows up as a failed request in the proxy's logs.
+key alias. The probe shows up as a failed request in the proxy's logs. The request has no messages, so even a proxy with a
+catch-all model route that forwards it upstream gets it rejected as invalid, which isn't billed.
+
+A key that is already over its budget is rejected before the proxy adds those headers. OpenUsage
+reads the spend and budget from LiteLLM's "Budget has been exceeded" message instead, or shows
+"over its budget" when the message doesn't include the numbers.
