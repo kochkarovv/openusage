@@ -20,7 +20,7 @@ enum APIKeyStatus: Sendable, Equatable {
     case overrideActive
 }
 
-/// A `ProviderRuntime` that needs a user-supplied API key (currently OpenRouter and Z.ai). The
+/// A `ProviderRuntime` that needs a user-supplied API key (OpenRouter, Z.ai, LiteLLM). The
 /// provider's Customize detail renders `apiKeyStatus` and writes changes through `saveAPIKey` /
 /// `deleteAPIKey`. The provider delegates to its auth store, so the UI stays provider-agnostic and
 /// writes the same config file the auth store already reads — no parallel credential storage.
@@ -37,4 +37,22 @@ protocol APIKeyManaging: ProviderRuntime {
     /// Remove the saved key. If an env key is present the status falls back to `fromEnvironment`;
     /// otherwise `notSet`.
     func deleteAPIKey() throws
+    /// Placeholder shown in the empty key field.
+    var apiKeyPlaceholder: String { get }
+}
+
+extension APIKeyManaging {
+    /// Placeholder for the key field; override when the provider's keys look different.
+    var apiKeyPlaceholder: String { "sk-or-v1-…" }
+}
+
+/// An `APIKeyManaging` provider that also needs a user-supplied host (self-hosted LiteLLM). The API Key
+/// card adds a Host field that writes through `saveHost`, next to the key in the same config file.
+@MainActor
+protocol APIHostManaging: APIKeyManaging {
+    var hostPlaceholder: String { get }
+    /// The host in use (saved or from the environment), or `nil` when none is set.
+    func currentHost() -> String?
+    /// Validate and persist `host`; empty input removes the saved host.
+    func saveHost(_ host: String) throws
 }

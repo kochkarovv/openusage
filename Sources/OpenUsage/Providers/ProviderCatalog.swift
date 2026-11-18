@@ -70,6 +70,7 @@ enum ProviderCatalog {
             CopilotProvider(defaults: defaults),
             DevinProvider(),
             GrokProvider(),
+            LiteLLMProvider(),
             OllamaProvider(),
             OpenCodeProvider(),
             OpenRouterProvider(),

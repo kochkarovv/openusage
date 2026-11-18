@@ -1,7 +1,7 @@
 import Foundation
 
 /// A user-supplied API key already on the machine — an environment variable or a small JSON/plain-text
-/// config file — for providers with no companion CLI/app that stashes a credential (OpenRouter, Z.ai).
+/// config file — for providers with no companion CLI/app that stashes a credential (OpenRouter, Z.ai, LiteLLM).
 /// The full read / status / save / delete behavior lives here so each such provider is a thin wrapper
 /// over its own config paths, env-var names, and error messages instead of a line-for-line copy.
 ///
@@ -39,31 +39,67 @@ struct UserAPIKeyStore: Sendable {
     }
 
     /// Persist `key` to the primary config file (as JSON `{"apiKey":"…"}`), which wins over a stale env
-    /// var — so this is also the "override" path. Empty input is rejected as `.missingKey`.
+    /// var — so this is also the "override" path. Other settings already in the file (LiteLLM's `host`)
+    /// are kept. Empty input is rejected as `.missingKey`.
     func saveKey(_ key: String) throws {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { throw makeError(.missingKey) }
-        let data = try JSONSerialization.data(withJSONObject: ["apiKey": trimmed], options: [.sortedKeys])
-        guard let text = String(data: data, encoding: .utf8) else { throw makeError(.saveFailed) }
-        do {
-            try files.writeText(configPaths[0], text)
-        } catch {
-            AppLog.error(.auth, "save API key to \(configPaths[0]) failed: \(error.localizedDescription)")
-            throw makeError(.saveFailed)
-        }
+        var object = Self.settingsObject(configPaths[0], files: files)
+        Self.keyFields.forEach { object.removeValue(forKey: $0) }
+        object["apiKey"] = trimmed
+        try write(object, to: configPaths[0], failure: .saveFailed)
     }
 
     /// Remove the saved key from every config path (not just the primary), so clearing truly clears it —
-    /// otherwise a key in an alternate path would resurface. A missing file is a no-op.
+    /// otherwise a key in an alternate path would resurface. Non-key settings stay; a file left with
+    /// nothing else is removed. A missing file is a no-op.
     func deleteKey() throws {
-        for path in configPaths {
-            guard files.exists(path) else { continue }
-            do {
+        for path in configPaths where files.exists(path) {
+            var object = Self.settingsObject(path, files: files)
+            Self.keyFields.forEach { object.removeValue(forKey: $0) }
+            try write(object, to: path, failure: .deleteFailed)
+        }
+    }
+
+    /// A non-key string setting stored beside the key in the primary config file (e.g. LiteLLM's `host`).
+    func configValue(_ field: String) -> String? {
+        (Self.settingsObject(configPaths[0], files: files)[field] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
+    }
+
+    /// Store (or, with `nil`, remove) a non-key setting in the primary config file, keeping the key.
+    func saveConfigValue(_ field: String, _ value: String?) throws {
+        var object = Self.settingsObject(configPaths[0], files: files)
+        if let plainKey = keyFromConfigFile(), object.isEmpty, files.exists(configPaths[0]) {
+            object["apiKey"] = plainKey  // a plain-text key file becomes JSON so the key survives
+        }
+        object[field] = value
+        try write(object, to: configPaths[0], failure: .saveFailed)
+    }
+
+    /// Fields that hold the key itself, in read precedence order.
+    private static let keyFields = ["apiKey", "api_key", "key"]
+
+    /// The JSON object in `path`, or empty when the file is missing, plain text, or not an object.
+    private static func settingsObject(_ path: String, files: TextFileAccessing) -> [String: Any] {
+        guard files.exists(path), let text = try? files.readText(path), let data = text.data(using: .utf8),
+              let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return [:] }
+        return object
+    }
+
+    /// Write `object` as sorted JSON, or remove the file when nothing is left in it.
+    private func write(_ object: [String: Any], to path: String, failure: Failure) throws {
+        do {
+            if object.isEmpty {
                 try files.remove(path)
-            } catch {
-                AppLog.error(.auth, "delete API key at \(path) failed: \(error.localizedDescription)")
-                throw makeError(.deleteFailed)
+            } else {
+                let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+                try files.writeText(path, String(decoding: data, as: UTF8.self))
             }
+        } catch {
+            AppLog.error(.auth, "update API key config at \(path) failed: \(error.localizedDescription)")
+            throw makeError(failure)
         }
     }
 
@@ -91,7 +127,7 @@ struct UserAPIKeyStore: Sendable {
     static func keyFromConfigText(_ text: String) -> String? {
         if let data = text.data(using: .utf8),
            let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            for field in ["apiKey", "api_key", "key"] {
+            for field in keyFields {
                 if let value = (object[field] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                    !value.isEmpty {
                     return value
