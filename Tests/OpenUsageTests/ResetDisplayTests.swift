@@ -78,7 +78,7 @@ final class ResetDisplayTests: XCTestCase {
         let providers: [ProviderRuntime] = [
             ClaudeProvider(), CodexProvider(), CursorProvider(),
             AntigravityProvider(), CopilotProvider(), DevinProvider(),
-            GrokProvider(), OpenRouterProvider(), ZAIProvider(), OpenCodeProvider()
+            GrokProvider(), LiteLLMProvider(), OpenRouterProvider(), ZAIProvider(), OpenCodeProvider()
         ]
         let descriptors = providers.flatMap(\.widgetDescriptors)
         let signals = Dictionary(uniqueKeysWithValues: descriptors

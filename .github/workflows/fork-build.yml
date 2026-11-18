@@ -5,23 +5,34 @@ on:
   push:
     branches: [main, swift-sync]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (macos-26-intel when arm64 capacity is exhausted)
+        default: macos-26
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
+      - name: Toolchain
+        run: swift --version && uname -m
+
       - name: Test
         run: swift test
 
       - name: Build app
-        run: CODESIGN_IDENTITY= script/build_and_run.sh build
+        # Always Apple Silicon, even when an Intel runner had to be used.
+        run: CODESIGN_IDENTITY= SWIFT_BUILD_ARCH=arm64 script/build_and_run.sh build
+
+      - name: Verify architecture
+        run: lipo -archs dist/OpenUsage.app/Contents/MacOS/OpenUsage | grep -qx arm64
 
       - name: Package
         run: ditto -c -k --keepParent dist/OpenUsage.app OpenUsage.zip

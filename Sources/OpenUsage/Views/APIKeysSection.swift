@@ -27,8 +27,11 @@ struct APIKeysSection: View {
     @State private var input = ""
     @State private var revealedKey: String?
     @State private var actionError: String?
+    /// Host editor state, only used when the provider also needs a host (LiteLLM).
+    @State private var savedHost: String?
+    @State private var hostInput = ""
 
-    private static let inputPlaceholder = "sk-or-v1-…"
+    private var hostProvider: (any APIHostManaging)? { provider as? any APIHostManaging }
 
     var body: some View {
         VStack(alignment: .leading, spacing: density.headerToCardSpacing) {
@@ -48,7 +51,7 @@ struct APIKeysSection: View {
             // background can't poke out of the card's rounded bottom.
             .clipShape(Theme.cardShape)
         }
-        .onAppear { status = provider.apiKeyStatus }
+        .onAppear { refreshStatus() }
     }
 
     // MARK: - Rows
@@ -60,7 +63,7 @@ struct APIKeysSection: View {
             Text(provider.provider.displayName)
             Spacer(minLength: 8)
             statusDot
-            Button(isOpen ? "Done" : (status == .notSet ? "Add" : "Edit")) {
+            Button(isOpen ? "Done" : (isMissingSetup ? "Add" : "Edit")) {
                 toggleExpand()
             }
             .buttonStyle(.bordered)
@@ -70,10 +73,15 @@ struct APIKeysSection: View {
         .padding(.vertical, density.controlRowPadding)
     }
 
-    /// The dot is binary, never a palette: red when no key is set, green when a key is usable (from
-    /// the environment, saved, or overriding the env). It's the row's only status signal.
+    /// No key yet, or — for a provider that also needs a host — no host yet.
+    private var isMissingSetup: Bool {
+        status == .notSet || (hostProvider != nil && savedHost == nil)
+    }
+
+    /// The dot is binary, never a palette: red while setup is missing (no key, or no host where one is
+    /// required), green once it's present. It's the row's only status signal.
     private var statusDot: some View {
-        let color = status == .notSet ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
+        let color = isMissingSetup ? Color(nsColor: .systemRed) : Color(nsColor: .systemGreen)
         return Circle().fill(color).frame(width: 6, height: 6)
     }
 
@@ -82,6 +90,16 @@ struct APIKeysSection: View {
     @ViewBuilder
     private var editorBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if let hostProvider {
+                fieldCaption("Host")
+                HStack(spacing: 8) {
+                    TextField(hostProvider.hostPlaceholder, text: $hostInput)
+                        .textFieldStyle(.roundedBorder)
+                        .onSubmit { saveHost() }
+                    primaryButton("Save", disabled: !hostChanged) { saveHost() }
+                }
+                fieldCaption("API Key")
+            }
             if status == .notSet {
                 // No key anywhere: the field is editable from the start.
                 keyField(editable: true)
@@ -128,7 +146,7 @@ struct APIKeysSection: View {
         if editable {
             APIKeyField(
                 text: $input,
-                placeholder: Self.inputPlaceholder,
+                placeholder: provider.apiKeyPlaceholder,
                 readOnly: false,
                 displayText: "",
                 reveal: revealInput,
@@ -166,6 +184,16 @@ struct APIKeysSection: View {
         }
     }
 
+    private func fieldCaption(_ title: String) -> some View {
+        Text(title)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private var hostChanged: Bool {
+        hostInput.trimmingCharacters(in: .whitespacesAndNewlines) != (savedHost ?? "")
+    }
+
     private var hasInput: Bool {
         !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -187,6 +215,7 @@ struct APIKeysSection: View {
 
     private func refreshStatus() {
         status = provider.apiKeyStatus
+        savedHost = hostProvider?.currentHost()
     }
 
     private func toggleExpand() {
@@ -206,6 +235,7 @@ struct APIKeysSection: View {
         input = ""
         revealedKey = nil
         actionError = nil
+        hostInput = hostProvider?.currentHost() ?? ""
     }
 
     private func toggleRevealDisplay() {
@@ -217,6 +247,8 @@ struct APIKeysSection: View {
         let key = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { return }
         do {
+            // Save a pending host draft too, so one Save covers both fields on first setup.
+            if let hostProvider, hostChanged { try hostProvider.saveHost(hostInput) }
             try provider.saveAPIKey(key)
             resetEditor()
             refreshStatus()
@@ -224,6 +256,20 @@ struct APIKeysSection: View {
         } catch {
             actionError = error.localizedDescription
             AppLog.error(.auth, "API key save failed for \(provider.provider.id): \(error.localizedDescription)")
+        }
+    }
+
+    private func saveHost() {
+        guard let hostProvider, hostChanged else { return }
+        do {
+            try hostProvider.saveHost(hostInput)
+            actionError = nil
+            refreshStatus()
+            hostInput = savedHost ?? ""
+            triggerRefresh()
+        } catch {
+            actionError = error.localizedDescription
+            AppLog.error(.auth, "API host save failed for \(provider.provider.id): \(error.localizedDescription)")
         }
     }
 

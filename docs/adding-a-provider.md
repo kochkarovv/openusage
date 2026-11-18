@@ -89,5 +89,9 @@ in-app **Settings → API Keys** card manages its key with no per-provider UI wo
 - `AppContainer` collects every `APIKeyManaging` provider into `apiKeyProviders`, which the card
   lists. Add the provider to the registry as usual and the card picks it up.
 
+A self-hosted provider that also needs a server address (LiteLLM) conforms to `APIHostManaging`
+instead: the same card adds a Host field, and the host is stored beside the key in the same config file
+(`UserAPIKeyStore.configValue` / `saveConfigValue`), so saving or clearing one never drops the other.
+
 Persist the key to a file the auth store already checks (don't introduce a parallel store), so the
 file remains the source of truth and a user can still edit it by hand.

@@ -226,6 +226,27 @@ extension OpenRouterUsageError: CategorizedError {
     }
 }
 
+extension LiteLLMAuthError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .missingKey, .missingHost: .notLoggedIn
+        case .invalidKey, .forbidden, .invalidHost: .authInvalid
+        case .saveFailed, .deleteFailed: .other
+        }
+    }
+}
+
+extension LiteLLMUsageError: CategorizedError {
+    var errorCategory: ErrorCategory {
+        switch self {
+        case .budgetExceeded: .rateLimited
+        case .connectionFailed: .network
+        case .invalidResponse: .decoding
+        case .requestFailed(let status): ErrorCategory.http(status)
+        }
+    }
+}
+
 extension ZAIAuthError: CategorizedError {
     var errorCategory: ErrorCategory {
         switch self {

@@ -108,6 +108,7 @@ final class OpenRouterProvider: ProviderRuntime {
 
 extension OpenRouterProvider: APIKeyManaging {
     var apiKeyStatus: APIKeyStatus { authStore.keyStatus() }
+    var apiKeyPlaceholder: String { "sk-or-v1-…" }
     func currentAPIKey() -> String? { authStore.currentAPIKey() }
     func saveAPIKey(_ key: String) throws { try authStore.saveAPIKey(key) }
     func deleteAPIKey() throws { try authStore.deleteAPIKey() }
