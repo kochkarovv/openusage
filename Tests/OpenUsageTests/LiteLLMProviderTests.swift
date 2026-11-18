@@ -52,6 +52,7 @@ final class LiteLLMAuthStoreTests: XCTestCase {
     }
 }
 
+@MainActor
 final class LiteLLMProviderTests: XCTestCase {
     func testBudgetKeyMapsMeterSpendAndAlias() async throws {
         let http = RoutingHTTPClient { request in
