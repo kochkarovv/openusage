@@ -5,17 +5,24 @@ on:
   push:
     branches: [main, swift-sync]
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner label (macos-26-intel when arm64 capacity is exhausted)
+        default: macos-26
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: macos-26
+    runs-on: ${{ inputs.runner || 'macos-26' }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Toolchain
+        run: swift --version && uname -m
 
       - name: Test
         run: swift test
