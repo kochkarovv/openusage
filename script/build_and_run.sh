@@ -19,6 +19,9 @@ set -euo pipefail
 
 MODE="${1:-run}"
 CONFIG="${CONFIG:-release}"
+# Optional target architecture (e.g. arm64), so an Intel CI runner can still produce an Apple Silicon app.
+ARCH_ARGS=()
+[[ -n "${SWIFT_BUILD_ARCH:-}" ]] && ARCH_ARGS=(--arch "$SWIFT_BUILD_ARCH")
 
 TARGET_NAME="OpenUsage"                 # SwiftPM target / binary name
 APP_DISPLAY="OpenUsage"                 # user-facing app name
@@ -45,8 +48,8 @@ SIGN_ENTITLEMENTS="$ROOT_DIR/script/OpenUsage.local.entitlements.plist"
 pkill -x "$TARGET_NAME" >/dev/null 2>&1 || true
 
 echo "==> swift build ($CONFIG)"
-swift build -c "$CONFIG"
-BUILD_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+swift build -c "$CONFIG" ${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"}
+BUILD_DIR="$(swift build -c "$CONFIG" ${ARCH_ARGS[@]+"${ARCH_ARGS[@]}"} --show-bin-path)"
 BUILD_BINARY="$BUILD_DIR/$TARGET_NAME"
 BUILD_CLI_BINARY="$BUILD_DIR/openusage-cli"
 
